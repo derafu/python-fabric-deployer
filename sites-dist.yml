@@ -5,7 +5,7 @@
 # Case 1: Simple local deploy
 # Description: Executes a deploy in a local environment.
 # Command: fab2 deploy --site=www.localtest.cl
-# Tested: ✅
+# Tested: Yes
 www.localtest.cl:
   repository: git@github.com:ejemplo/localtest.git
   deploy_path: /var/www/sites/www.localtest.cl
@@ -15,7 +15,7 @@ www.localtest.cl:
 # Case 2: Local deploy with custom virtualenv
 # Description: Uses a custom directory name for the virtual environment.
 # Command: fab2 deploy --site=www.venvpersonalizado.cl
-# Tested: ✅
+# Tested: Yes
 www.venvpersonalizado.cl:
   repository: git@github.com:ejemplo/venvtest.git
   deploy_path: /var/www/sites/www.venvpersonalizado.cl
@@ -25,7 +25,7 @@ www.venvpersonalizado.cl:
 # Case 3: Local deploy with shared files
 # Description: Uses shared files and directories for persistence.
 # Command: fab2 deploy --site=www.sharedlocal.cl
-# Tested: ✅
+# Tested: Yes
 www.sharedlocal.cl:
   repository: git@github.com:ejemplo/shared.git
   deploy_path: /var/www/sites/www.sharedlocal.cl
@@ -80,7 +80,7 @@ www.sharedremote.cl:
 # Case 7: Deploy inside Docker container
 # Description: Deploys the site inside a local Docker container.
 # Command: fab2 deploy --site=www.dockertest.cl
-# Tested: ✅
+# Tested: Yes
 www.dockertest.cl:
   repository: git@github.com:ejemplo/docker.git
   deploy_path: /var/www/sites/www.dockertest.cl
@@ -92,7 +92,7 @@ www.dockertest.cl:
 # Case 8: Docker deploy with custom venv
 # Description: Uses a custom virtualenv path and enables Gunicorn logging.
 # Command: fab2 deploy --site=www.dockervenv.cl
-# Tested: ✅
+# Tested: Yes
 www.dockervenv.cl:
   repository: git@github.com:ejemplo/dockervenv.git
   deploy_path: /var/www/sites/www.dockervenv.cl
@@ -152,7 +152,7 @@ www.remotedockerhost.cl:
 # Description: wsgi.py is located in a subfolder with a custom name (not domain).
 #              The deploy script auto-detects the folder and uses it for Gunicorn.
 # Command: fab2 deploy --site=www.customproject.cl
-# Tested: ✅
+# Tested: Yes
 www.customproject.cl:
   repository: git@github.com:ejemplo/customproject.git
   deploy_path: /var/www/sites/www.customproject.cl
@@ -168,7 +168,7 @@ www.customproject.cl:
 # Case 13: Writable directories configuration
 # Description: Defines folders that must be writable after deploy.
 # Command: fab2 deploy --site=www.writeable.cl
-# Tested: ✅
+# Tested: Yes
 www.writeable.cl:
   repository: git@github.com:ejemplo/writeable.git
   deploy_path: /var/www/sites/www.writeable.cl
@@ -188,7 +188,7 @@ www.writeable.cl:
 # Description: Creates a compressed backup before each deploy and retains only a limited number of backup files.
 #              This is useful for rollback or auditing purposes.
 # Command: fab2 deploy --site=www.examplebackup.cl
-# Status: ✅
+# Status: Yes
 www.examplebackup.cl:
   repository: git@github.com:example/example.git
   deploy_path: /var/www/sites/www.examplebackup.cl
@@ -209,7 +209,7 @@ www.examplebackup.cl:
 #              A symlink named 'current' is updated to point to the latest release.
 #              Only a limited number of releases are kept to save disk space.
 # Command: fab2 deploy --site=www.examplereleases.cl
-# Status: ✅
+# Status: Yes
 www.examplereleases.cl:
   repository: git@github.com:example/example.git
   deploy_path: /var/www/sites/www.examplereleases.cl
