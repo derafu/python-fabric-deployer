@@ -1,7 +1,3 @@
-"""
-High-level orchestration for a Django site deployment.
-"""
-
 from fabric2 import Connection
 from invoke import Context
 from fabricator.runners import DockerRunner

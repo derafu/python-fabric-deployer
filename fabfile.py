@@ -8,6 +8,7 @@ from fabricator.utils import load_sites, print_site_list
 from fabricator.logger import get_logger
 from fabricator.recipes import rollback_to_previous_release, release_lock
 
+
 def get_connection(fallback_connection: Union[Connection, Context]) -> Union[Connection, Context]:
     """
     Return a connection object based on environment variables.

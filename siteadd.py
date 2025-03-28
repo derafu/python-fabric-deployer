@@ -22,7 +22,6 @@ def load_sites():
     with open(SITES_FILE, "r") as f:
         return yaml.safe_load(f) or {}
 
-
 def save_sites(sites):
     """
     Save the updated site configurations to the YAML file.
@@ -37,7 +36,6 @@ def save_sites(sites):
             default_flow_style=False,
             sort_keys=False
         )
-
 
 def add_site(domain, repo_url):
     """
@@ -68,7 +66,6 @@ def add_site(domain, repo_url):
 
     # Confirm success to user
     print(f"The configuration for {domain} has been added.")
-
 
 # Handle command-line execution
 if __name__ == "__main__":

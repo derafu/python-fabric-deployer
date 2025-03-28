@@ -40,7 +40,6 @@ def check_remote(c: Connection, config: dict) -> None:
     c.run(f"mkdir -p {config['deploy_path']}", warn=True)
     logger.info("Ensured deployment path exists.")
 
-
 def update_code(c: Connection, config: dict) -> None:
     """
     Clone the repository into a temporary folder without overwriting
@@ -148,7 +147,6 @@ def shared_files(c: Connection, config: dict) -> None:
         c.run(f"ln -sfn {shared_subdir} {release_subdir}", warn=True)
         logger.info(f"Linked shared directory: {d}")
 
-
 def install_deps(c: Connection, config: dict) -> None:
     """
     Create and activate a virtual environment, then install dependencies.
@@ -234,7 +232,6 @@ def migrate(c: Connection, config: dict) -> None:
         logger.error("Migration execution failed.")
         raise RuntimeError(f"Migration error: {str(e)}") from e
 
-
 def collect_static(c: Connection, config: dict) -> None:
     """
     Collect static files using Django's `collectstatic` command.
@@ -263,7 +260,6 @@ def collect_static(c: Connection, config: dict) -> None:
         f"--noinput > /dev/null 2>&1'",
         pty=True
     )
-
 
 def restart_services(c: Connection, config: dict) -> None:
     """
@@ -385,7 +381,6 @@ def set_writable_dirs(c: Connection, config: dict) -> None:
         else:
             c.run(chmod_cmd, warn=True)
 
-
 def create_backup(c: Connection | Context, config: dict) -> None:
     """
     Create a compressed backup of the project before deployment.
@@ -442,7 +437,6 @@ def create_backup(c: Connection | Context, config: dict) -> None:
                 logger.info(f"Removed old backup: {file}")
     except Exception as e:
         logger.warning(f"Could not cleanup old backups: {e}")
-
 
 def deploy_to_release_folder(c: Connection, config: dict) -> str:
     """
@@ -519,7 +513,6 @@ def cleanup_old_releases(c: Connection, config: dict, keep: int = 5):
         for release in to_delete:
             c.run(f"rm -rf {release}", warn=True)
 
-
 def rollback_to_previous_release(c: Connection, config: dict) -> None:
     """
     Roll back the `current` symlink to the previous valid release.
@@ -558,7 +551,6 @@ def rollback_to_previous_release(c: Connection, config: dict) -> None:
     # Remove the failed release folder
     logger.info(f"Removing failed release: {failed_release}")
     c.run(f"rm -rf {failed_release}", warn=True)
-
 
 def acquire_lock(c: Connection, config: dict) -> str:
     """
@@ -603,7 +595,6 @@ def acquire_lock(c: Connection, config: dict) -> str:
     logger.info("Deployment lock acquired.")
 
     return lock_id
-
 
 def release_lock(c: Connection, config: dict, lock_id: str) -> None:
     """
