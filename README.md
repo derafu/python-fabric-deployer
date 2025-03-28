@@ -6,7 +6,7 @@
 ![GitHub issues](https://img.shields.io/github/issues-raw/derafu/python-fabric-deployer)
 
 
-Derafu Deployer is a lightweight deployment system for managing multiple Django sites using Fabric 3. It supports deployment via local, SSH, or Docker runners, and provides key features like automatic backups, shared files/directories management, and per-site configuration.
+Derafu Deployer is a lightweight deployment system for managing multiple Django sites using Fabric2 . It supports deployment via local, SSH, or Docker runners, and provides key features like automatic backups, shared files/directories management, and per-site configuration.
 
 ---
 
@@ -20,7 +20,7 @@ Derafu Deployer is a lightweight deployment system for managing multiple Django 
 - **Dynamic Site Detection**: Uses `sites.yml` to configure and deploy any number of Django projects.
 - **Versioned Releases**: Each deploy is stored in `releases/YYYYMMDD_HHMMSS_mmm`, keeping history clean and organized.
 - **Symlink-Based Switching**: The `current` symlink always points to the latest working release, enabling atomic deployments.
-- **Rollback on Failure**: If a deployment fails (e.g., during migrations), the previous version is automatically restored.
+- **Rollback on Failure**: If a deployment fails, the previous version is automatically restored.
 - **Manual Rollback**: You can manually trigger a rollback with `fab2 rollback --site=...`.
 - **Old Releases Cleanup**: Keeps only the last `N` releases (default: 5) to avoid clutter.
 - **Release Locking**: Prevents concurrent deployments using a `.deploy.lock` file.
@@ -31,7 +31,7 @@ Derafu Deployer is a lightweight deployment system for managing multiple Django 
 ## Requirements
 
 - Python 3.13+
-- Fabric2 3+
+- Fabric2 3.2
 - SSH access to your servers.
 - Docker (if using Docker runner)
 - Git repositories for your projects.
