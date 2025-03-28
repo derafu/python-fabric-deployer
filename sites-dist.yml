@@ -43,7 +43,7 @@ www.sharedlocal.cl:
 # Case 4: Remote deploy using -H
 # Description: Deploy on remote server using -H flag.
 # Command: fab2 -H user@1.2.3.4 deploy --site=www.remoteserver.cl
-# Tested: ❌
+# Tested: No
 www.remoteserver.cl:
   repository: git@github.com:ejemplo/remoteserver.git
   deploy_path: /var/www/sites/www.remoteserver.cl
@@ -52,7 +52,7 @@ www.remoteserver.cl:
 # Case 5: Remote deploy with host defined in config
 # Description: Uses `host` field inside the config YAML.
 # Command: fab2 deploy --site=www.sshconfig.cl
-# Tested: ❌
+# Tested: No
 www.sshconfig.cl:
   host: user@1.2.3.4
   repository: git@github.com:ejemplo/sshconfig.git
@@ -62,7 +62,7 @@ www.sshconfig.cl:
 # Case 6: Remote with shared files and directories
 # Description: Uses shared_files and shared_dirs on a remote server.
 # Command: fab2 -H user@1.2.3.4 deploy --site=www.sharedremote.cl
-# Tested: ❌
+# Tested: No
 www.sharedremote.cl:
   repository: git@github.com:ejemplo/sharedremote.git
   deploy_path: /var/www/sites/www.sharedremote.cl
@@ -109,7 +109,7 @@ www.dockervenv.cl:
 # Case 9: Docker deploy on remote server
 # Description: Executes the deploy inside a Docker container remotely.
 # Command: fab2 -H user@host deploy --site=www.remotedockertest.cl
-# Tested: ❌
+# Tested: No
 www.remotedockertest.cl:
   repository: git@github.com:ejemplo/docker.git
   deploy_path: /var/www/sites/www.remotedockertest.cl
@@ -121,7 +121,7 @@ www.remotedockertest.cl:
 # Case 10: Remote Docker with custom venv
 # Description: Docker deploy with custom venv path on a remote server.
 # Command: fab2 -H user@host deploy --site=www.remotedockervenv.cl
-# Tested: ❌
+# Tested: No
 www.remotedockervenv.cl:
   repository: git@github.com:ejemplo/dockervenv.git
   deploy_path: /var/www/sites/www.remotedockervenv.cl
@@ -134,7 +134,7 @@ www.remotedockervenv.cl:
 # Case 11: Remote Docker with host in config
 # Description: Runs Docker deploy remotely using host from the config file.
 # Command: fab2 deploy --site=www.remotedockerhost.cl
-# Tested: ❌
+# Tested: No
 www.remotedockerhost.cl:
   host: user@remote.server.com
   repository: git@github.com:ejemplo/docker.git
