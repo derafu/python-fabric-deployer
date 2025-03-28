@@ -1,5 +1,6 @@
 .DS_Store
 .python-version
+sites.yml
 __pycache__/
 *.pyc
 venv/

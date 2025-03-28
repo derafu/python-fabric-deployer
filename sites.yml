@@ -1,7 +1,0 @@
-www.bhexpress.cl:
-  repository: git@github.com:BHExpress/bhexpress.git
-  deploy_path: /Users/nicolas/Sites/www.bhexpress.cl
-  branch: master
-  backup_path: /Users/nicolas/Sites/backuplocal
-  max_backups: 3
-  max_releases: 3
