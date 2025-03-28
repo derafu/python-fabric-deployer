@@ -109,7 +109,7 @@ www.example.com:
 For simple configurations you can use:
 
 ```shell
-./siteadd.sh www.example.com git@github.com:example/example.git
+./siteadd.py www.example.com git@github.com:example/example.git
 ```
 ---
 
