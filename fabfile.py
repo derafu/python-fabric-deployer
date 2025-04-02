@@ -1,15 +1,28 @@
 #!/usr/bin/env python3
+
+"""
+Fabric file for deploying Python projects.
+
+This file defines a set of tasks that can be used to deploy Python projects
+using Fabric. It includes functionality for deploying individual projects,
+
+"""
+
 import os
-from typing import Union
-from fabric import task, Connection
-from invoke import Context, Collection
+
+from fabric2 import Connection, task
+from invoke.collection import Collection
+from invoke.context import Context
+
 from fabricator.deploy import deploy_site
-from fabricator.utils import load_sites, print_site_list
 from fabricator.logger import get_logger
-from fabricator.recipes import rollback_to_previous_release, release_lock
+from fabricator.recipes import release_lock, rollback_to_previous_release
+from fabricator.utils import load_sites, print_site_list
 
 
-def get_connection(fallback_connection: Union[Connection, Context]) -> Union[Connection, Context]:
+def get_connection(
+        fallback_connection: Connection | Context
+    ) -> Connection | Context:
     """
     Return a connection object based on environment variables.
 
@@ -33,7 +46,7 @@ def get_connection(fallback_connection: Union[Connection, Context]) -> Union[Con
     return fallback_connection
 
 @task(help={"site": "Name of the site to deploy"})
-def deploy(c: Connection, site: str) -> None:
+def deploy(c: Connection | Context, site: str) -> None:
     """
     Deploy a single site defined in the configuration file.
 
@@ -71,7 +84,7 @@ def deploy(c: Connection, site: str) -> None:
     deploy_site(c, config)
 
 @task
-def deploy_all(c: Connection) -> None:
+def deploy_all(c: Connection | Context) -> None:
     """
     Deploy all sites listed in sites.yml.
 
@@ -91,7 +104,7 @@ def deploy_all(c: Connection) -> None:
         deploy_site(c, config)
 
 @task
-def list_sites(c: Connection) -> None:
+def list_sites(c: Connection | Context) -> None:
     """
     Display all available site configurations.
 
@@ -101,13 +114,16 @@ def list_sites(c: Connection) -> None:
     print_site_list()
 
 @task(help={"site": "Name of the site to rollback"})
-def rollback(c: Connection, site: str) -> None:
+def rollback(c: Connection | Context, site: str) -> None:
     """
     Rollback a site to its previous release.
 
     :param c: Fabric connection object.
     :param site: Name of the site to rollback.
     """
+    # Resolve connection using environment vars if present
+    c = get_connection(c)
+
     # Initialize logger
     logger = get_logger(site)
 
@@ -128,7 +144,7 @@ def rollback(c: Connection, site: str) -> None:
     rollback_to_previous_release(c, config)
 
 @task
-def rollback_all(c: Connection) -> None:
+def rollback_all(c: Connection | Context) -> None:
     """
     Rollback all sites to their previous release.
 
@@ -148,13 +164,16 @@ def rollback_all(c: Connection) -> None:
         rollback_to_previous_release(c, config)
 
 @task(help={"site": "Name of the site to unlock"})
-def unlock(c: Connection, site: str) -> None:
+def unlock(c: Connection | Context, site: str) -> None:
     """
     Remove the lock file for a specific site.
 
     :param c: Fabric connection object.
     :param site: Name of the site to unlock.
     """
+    # Resolve connection using environment vars if present
+    c = get_connection(c)
+
     # Initialize logger
     logger = get_logger(site)
 
@@ -170,10 +189,10 @@ def unlock(c: Connection, site: str) -> None:
     config = sites[site]
     config['name'] = site
     logger.info(f"Unlocking site: {site}")
-    release_lock(c, config)
+    release_lock(c, config, force=True)
 
 @task
-def unlock_all(c: Connection) -> None:
+def unlock_all(c: Connection | Context) -> None:
     """
     Unlock all sites by removing their lock files.
 

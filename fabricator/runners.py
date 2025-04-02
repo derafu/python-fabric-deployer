@@ -1,36 +1,59 @@
+"""
+Module for different deployment runners.
+
+This module provides different deployment runners that can be used to
+deploy Python projects using Fabric. It includes functionality for
+local, SSH, and Docker runners.
+
+"""
+
 from typing import Protocol
-from invoke import Context
+
 from fabric2 import Connection
+from invoke.context import Context
+from invoke.runners import Result
 
 
 class Runner(Protocol):
+
     """
     Protocol to define a standard interface for runners.
 
     All runners must implement `run`, `sudo`, and `cd` methods.
     """
 
-    def run(self, command: str, **kwargs): ...
-    def sudo(self, command: str, **kwargs): ...
-    def cd(self, path: str): ...
+    def run(self, command: str, **kwargs) -> Result | None:
+        """Run a shell command."""
+
+    def sudo(self, command: str, **kwargs) -> Result | None:
+        """Run a command with elevated privileges."""
+
+    def cd(self, path: str):
+        """Change the current working directory."""
+
 
 class LocalRunner(Context):
+
     """
     Local runner based on `invoke.Context`.
 
     Used when running deployment commands locally.
     """
+
     pass
 
 class SSHRunner(Connection):
+
     """
     SSH runner based on `fabric.Connection`.
 
     Used for remote deployment via SSH.
     """
+
     pass
 
 class DockerRunner:
+
     """
     Docker-based runner to execute commands inside a container.
 
@@ -40,7 +63,17 @@ class DockerRunner:
     """
 
     def __init__(self, container_name: str,
-                 inner_runner: Context, user: str = None):
+                 inner_runner: Context | Connection, user: str = "root"):
+        """
+        Initialize a new DockerRunner instance.
+
+        :param container_name: Name of the Docker container to execute
+        commands in.
+        :param inner_runner: The underlying runner (Context or Connection)
+        to use.
+        :param user: User to run commands as inside the container
+        (default: root).
+        """
         # Store container name for Docker exec
         self.container_name = container_name
 
@@ -48,9 +81,9 @@ class DockerRunner:
         self.inner_runner = inner_runner
 
         # Default user is root unless otherwise specified
-        self.user = user or "root"
+        self.user = user
 
-    def run(self, command: str, **kwargs):
+    def run(self, command: str, **kwargs) -> Result | None:
         """
         Run a command inside the Docker container.
 
@@ -59,12 +92,16 @@ class DockerRunner:
         :return: Result of the executed command.
         """
         # Format docker exec command
-        full_cmd = f"docker exec -u {self.user} {self.container_name} {command}"
+        full_cmd = (
+            f"docker exec -u {self.user} "
+            f"{self.container_name} "
+            f"{command}"
+        )
 
-        # Run the command via inner runner (Context or Connection)
+        # Run the command via inner runner and return its result directly
         return self.inner_runner.run(full_cmd, **kwargs)
 
-    def sudo(self, command: str, **kwargs):
+    def sudo(self, command: str, **kwargs) -> Result | None:
         """
         Run a command as root via `sudo` inside the container.
 

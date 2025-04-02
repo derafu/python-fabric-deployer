@@ -1,8 +1,14 @@
 #!/usr/bin/env python3
+"""
+Add a new site to the sites configuration file.
 
+This script allows you to add a new site to the sites configuration file.
+
+"""
 import sys
-import yaml
 from pathlib import Path
+
+import yaml
 
 # Define the path to the main sites configuration file
 SITES_FILE = Path(__file__).resolve().parent / "sites.yml"
@@ -19,7 +25,7 @@ def load_sites():
         return {}
 
     # Open and load the YAML file
-    with open(SITES_FILE, "r") as f:
+    with open(SITES_FILE) as f:
         return yaml.safe_load(f) or {}
 
 def save_sites(sites):
@@ -70,7 +76,8 @@ def add_site(domain, repo_url):
 # Handle command-line execution
 if __name__ == "__main__":
     # Ensure exactly two arguments are passed (domain and repo)
-    if len(sys.argv) != 3:
+    LIMIT_ARGS = 2
+    if len(sys.argv) != LIMIT_ARGS:
         print("Usage: ./siteadd.py \"www.example.com\" "
               "\"git@github.com:example/www.example.com.git\"")
         sys.exit(1)

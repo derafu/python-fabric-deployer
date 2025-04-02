@@ -54,20 +54,22 @@ pip install -r requirements.txt
 .
 ├── LICENSE                       # License file
 ├── README.md                     # Project documentation
-├── __init__.py                   # Required for Python package recognition
-├── fabfile.py                    # Entry point for Fabric tasks (e.g., deploy)
-├── requirements.txt              # Python dependencies (e.g., fabric2)
+├── fabfile.py                    # Entry point for Fabric tasks (e.g., deploy, rollback)
+├── pyproject.toml                # Optional project metadata and build configuration
+├── requirements.txt              # Python dependencies (e.g., fabric2, invoke)
 ├── siteadd.py                    # Script to add new site entries to `sites.yml`
+├── sites-dist.yml                # Example configuration file (template)
+├── sites.yml                     # Main configuration file with all project deployments
 ├── fabricator/                   # Core deployment logic and utilities
-│   ├── __init__.py               # Makes fabricator a package
-│   ├── deploy.py                 # Main deploy process controller
-│   ├── logger.py                 # Logging utilities (console only)
-│   ├── recipes.py                # Reusable deployment tasks (e.g. backup, shared dirs)
-│   ├── runners.py                # Runner abstraction (local, SSH, Docker)
-│   ├── sites.yml                 # Main configuration file with all project deployments
-│   ├── sites-dist.yml            # Example configuration file (template)
-│   └── utils.py                  # Utility functions
-
+│   ├── __init__.py               # Marks fabricator as a Python package
+│   ├── deploy.py                 # Main orchestrator for deploying sites
+│   ├── logger.py                 # Logging utilities (console output + formatting)
+│   ├── recipes.py                # Reusable deployment steps (migrate, restart, etc.)
+│   ├── runners.py                # Abstracts local, SSH, and Docker command execution
+│   ├── utils.py                  # Utility functions (load_sites, print_site_list)
+│   └── exceptions/              # Custom exception handling (e.g., deploy failures)
+│       ├── __init__.py           # Package initializer for exceptions
+│       └── deployer_exceptions.py # Custom exception classes for deployment errors
 ```
 
 ---
@@ -140,7 +142,7 @@ For simple configurations you can use:
 To see all configured sites:
 
 ```bash
-fab2 sites
+fab2 list-sites
 ```
 
 ---
@@ -204,19 +206,19 @@ DEPLOYER_HOST=192.168.1.99 DEPLOYER_USER=admin DEPLOYER_PORT=22 fab2 deploy --si
 Deploy all sites defined in `sites.yml`, one by one:
 
 ```bash
-fab2 deploy_all
+fab2 deploy-all
 ```
 
 You can also deploy all sites remotely by using environment variables:
 
 ```bash
-DEPLOYER_HOST=192.168.1.99 DEPLOYER_USER=admin fab2 deploy_all
+DEPLOYER_HOST=192.168.1.99 DEPLOYER_USER=admin fab2 deploy-all
 ```
 
 Or limit to a specific runner (e.g., local only):
 
 ```bash
-fab2 deploy_all --runner=local
+fab2 deploy-all --runner=local
 ```
 
 ### Rollback (Automatic and Manual)
@@ -242,7 +244,7 @@ This will:
 ### Rollback All Sites
 
 ```bash
-fab2 rollback_all
+fab2 rollback-all
 ```
 
 ### Unlock a Stuck Deployment
@@ -260,7 +262,7 @@ This forcibly removes the lock file and allows future deploys.
 Force unlock for all sites at once (use with caution):
 
 ```bash
-fab2 unlock_all
+fab2 unlock-all
 ```
 
 ---

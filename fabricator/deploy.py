@@ -1,28 +1,39 @@
+"""
+Module for deploying Python projects using Fabric.
+
+This module provides functionality for deploying Python projects using
+Fabric, including deployment steps, lock management, and rollback
+mechanisms.
+
+"""
 from fabric2 import Connection
-from invoke import Context
-from fabricator.runners import DockerRunner
+from invoke.context import Context
+
+from fabricator.exceptions.deployer_exceptions import DeployerException
 from fabricator.logger import get_logger
 from fabricator.recipes import (
+    acquire_lock,
     check_remote,
-    update_code,
-    install_deps,
-    migrate,
+    cleanup_old_releases,
     collect_static,
-    restart_services,
-    shared_files,
-    set_writable_dirs,
     create_backup,
     deploy_to_release_folder,
-    cleanup_old_releases,
+    install_deps,
+    migrate,
+    release_lock,
+    restart_services,
     rollback_to_previous_release,
-    acquire_lock,
-    release_lock
+    set_writable_dirs,
+    shared_files,
+    symlink_release_to_current,
+    update_code,
 )
+from fabricator.runners import DockerRunner
 
 
-def deploy_site(c: Connection, config: dict) -> None:
+def deploy_site(c: Connection | DockerRunner | Context, config: dict) -> None:
     """
-    Deploy a Django site using the appropriate runner (local, docker, or ssh).
+    Deploy a Python project using runner (local, docker, or ssh).
 
     This function orchestrates the full deployment pipeline:
     - Acquires a deployment lock to prevent concurrent deploys.
@@ -31,7 +42,7 @@ def deploy_site(c: Connection, config: dict) -> None:
     - Clones the repository and creates a timestamped release folder.
     - Updates the `current` symlink to the new release.
     - Symlinks shared files and writable folders.
-    - Installs dependencies, runs migrations, collectstatic, and restarts services.
+    - Installs dependencies, runs migrations, collectstatic, restarts services.
     - Performs automatic rollback in case of failure.
     - Releases the lock regardless of success or failure.
 
@@ -46,15 +57,21 @@ def deploy_site(c: Connection, config: dict) -> None:
     if runner_type == "docker":
         # If using Docker, wrap the context with a DockerRunner
         container = config["docker_container"]
-        docker_user = config.get("docker_user")
-        c = DockerRunner(container_name=container, inner_runner=Context(), user=docker_user)
+        docker_user = config.get("docker_user", "root")
+        runner = DockerRunner(
+            container_name=container,
+            inner_runner=Context(),
+            user=docker_user
+        )
+        c = runner
         host = f"docker:{container}"
     else:
         # Fallback to local or SSH connection
         host = getattr(c, "host", "local")
 
     # Log the start of deployment
-    logger.info(f"Starting deployment for '{config['name']}' on '{host}'")
+    msg = f"Starting deployment for '{config['name']}' on '{host}'"
+    logger.info(msg)
     lock_id = None
     release_path = None
 
@@ -71,8 +88,9 @@ def deploy_site(c: Connection, config: dict) -> None:
         # Step 3: Clone the repository into a temporary folder
         update_code(c, config)
 
-        # Step 4: Move code into a timestamped release folder and update `current` symlink
+        # Step 4: Move code into timestamped release folder and update symlink
         original_path = config["deploy_path"]
+        config["original_path"] = original_path
         release_path = deploy_to_release_folder(c, config)
         config["deploy_path"] = release_path
 
@@ -98,13 +116,17 @@ def deploy_site(c: Connection, config: dict) -> None:
         # Step 11: Run Django's collectstatic to prepare static files
         collect_static(c, config)
 
-        # Step 12: Restart Gunicorn or other services to reflect changes
+        # Step 12: Symlink the release to the current symlink
+        symlink_release_to_current(c, config)
+
+        # Step 13: Restart Gunicorn or other services to reflect changes
         restart_services(c, config)
 
         # Deployment completed successfully
-        logger.info(f"Deployment for '{config['name']}' completed successfully.")
+        msg = f"Deployment for '{config['name']}' completed successfully."
+        logger.info(msg)
 
-    except Exception as e:
+    except DeployerException as e:
         # Log the deployment error
         logger.error(f"Deployment failed: {e}")
         if release_path:

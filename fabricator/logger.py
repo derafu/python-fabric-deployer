@@ -1,8 +1,17 @@
+"""
+Module for logging deployment operations.
+
+This module provides a reusable logger that can be used to log messages
+from any module. It ensures that handlers are added only once to avoid
+duplicate logs.
+
+"""
 import logging
+
 
 def get_logger(name: str = "deploy") -> logging.Logger:
     """
-    Returns a reusable logger configured to output to the console.
+    Return a reusable logger configured to output to the console.
 
     Ensures that handlers are added only once to avoid duplicate logs.
 

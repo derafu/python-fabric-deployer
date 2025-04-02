@@ -1,16 +1,27 @@
-import os
+"""
+Module for deployment recipes.
+
+This module provides reusable deployment recipes that can be used to
+deploy Python projects using Fabric. It includes functionality for
+checking remote systems, updating code, creating backups, and more.
+
+"""
 import getpass
+import os
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
+
 from fabric2 import Connection
 from invoke.context import Context
+
+from fabricator.exceptions.deployer_exceptions import DeployerException
 from fabricator.logger import get_logger
+from fabricator.runners import DockerRunner
 
 
-def check_remote(c: Connection, config: dict) -> None:
+def check_remote(c: Connection | DockerRunner | Context, config: dict) -> None:
     """
-    Ensure the deployment path exists on the remote system and that
-    all required configuration fields are provided.
+    Ensure that all required configuration fields are provided.
 
     :param c: Fabric connection object.
     :param config: Site configuration dictionary.
@@ -29,21 +40,22 @@ def check_remote(c: Connection, config: dict) -> None:
     # If any required keys are missing, raise an error
     if missing:
         logger.error(f"Missing required config keys: {', '.join(missing)}")
-        raise ValueError(f"Invalid configuration for site '{config['name']}'.")
+        msg_raise = f"Invalid configuration for site '{config['name']}'."
+        raise DeployerException(msg_raise)
 
     # For Docker runner, ensure 'docker_container' is defined
     if runner == "docker" and not config.get("docker_container"):
         logger.error("Missing 'docker_container' for Docker-based runner.")
-        raise ValueError(f"Invalid configuration for Docker site '{config['name']}'.")
+        msg_raise = f"Invalid configuration for Docker site '{config['name']}'"
+        raise DeployerException(msg_raise)
 
     # Ensure that the remote deploy path exists
     c.run(f"mkdir -p {config['deploy_path']}", warn=True)
     logger.info("Ensured deployment path exists.")
 
-def update_code(c: Connection, config: dict) -> None:
+def update_code(c: Connection | DockerRunner | Context, config: dict) -> None:
     """
-    Clone the repository into a temporary folder without overwriting
-    the main deployment directory.
+    Clone repository to temp folder preserving main deployment directory.
 
     :param c: Fabric connection or context object.
     :param config: Site configuration dictionary.
@@ -66,7 +78,7 @@ def update_code(c: Connection, config: dict) -> None:
     c.run(
         f"find {deploy_path} -mindepth 1 -maxdepth 1 "
         f"! -name 'env' ! -name '__clone_tmp__' "
-        f"! -name 'releases' ! -name '.deploy.lock' "
+        f"! -name 'releases' ! -name 'current' ! -name '.deploy.lock' "
         f"-exec rm -rf {{}} +",
         warn=True
     )
@@ -81,7 +93,7 @@ def update_code(c: Connection, config: dict) -> None:
     # Log confirmation that clone completed
     logger.info("Code cloned into temporary folder (not moved yet).")
 
-def shared_files(c: Connection, config: dict) -> None:
+def shared_files(c: Connection | DockerRunner | Context, config: dict) -> None:
     """
     Create symlinks for shared files and directories between releases.
 
@@ -107,7 +119,7 @@ def shared_files(c: Connection, config: dict) -> None:
     release_dir = config['deploy_path']
 
     # Ensure the shared directory exists
-    c.run(f"mkdir -p {shared_dir}", warn=True)
+    result = c.run(f"mkdir -p {shared_dir}", warn=True)
 
     # Handle shared files
     for file in shared_files:
@@ -115,13 +127,15 @@ def shared_files(c: Connection, config: dict) -> None:
         release_file = os.path.join(release_dir, file)
 
         # If a real file exists and is not a symlink, move it to shared
-        if c.run(f"test -f {release_file} && [ ! -L {release_file} ]",
-                 warn=True).ok:
+        result = c.run(f"test -f {release_file} && [ ! -L {release_file} ]",
+                      warn=True)
+        if result and result.ok:
             logger.warning(f"Moving existing file {file} to shared/")
             c.run(f"mv {release_file} {shared_file}", warn=True)
 
         # If the file doesn't exist in shared, create an empty one
-        if c.run(f"test -f {shared_file}", warn=True).failed:
+        result = c.run(f"test -f {shared_file}", warn=True)
+        if result and result.failed:
             c.run(f"touch {shared_file}", warn=True)
 
         # Create or update the symlink in the release directory
@@ -134,20 +148,25 @@ def shared_files(c: Connection, config: dict) -> None:
         release_subdir = os.path.join(release_dir, d)
 
         # If a real directory exists and is not a symlink, move it
-        if c.run(f"test -d {release_subdir} && [ ! -L {release_subdir} ]",
-                 warn=True).ok:
+        test_cmd = (
+            f"test -d {release_subdir} && "
+            f"[ ! -L {release_subdir} ]"
+        )
+        result = c.run(test_cmd, warn=True)
+        if result and result.ok:
             logger.warning(f"Moving existing directory {d} to shared/")
             c.run(f"mv {release_subdir} {shared_subdir}", warn=True)
 
         # If the shared directory doesn't exist, create it
-        if c.run(f"test -d {shared_subdir}", warn=True).failed:
+        result = c.run(f"test -d {shared_subdir}", warn=True)
+        if result and result.failed:
             c.run(f"mkdir -p {shared_subdir}", warn=True)
 
         # Create or update the symlink in the release directory
         c.run(f"ln -sfn {shared_subdir} {release_subdir}", warn=True)
         logger.info(f"Linked shared directory: {d}")
 
-def install_deps(c: Connection, config: dict) -> None:
+def install_deps(c: Connection | DockerRunner | Context, config: dict) -> None:
     """
     Create and activate a virtual environment, then install dependencies.
 
@@ -159,27 +178,34 @@ def install_deps(c: Connection, config: dict) -> None:
     """
     logger = get_logger(config['name'])
 
-    # Get virtualenv folder (default: "venv")
     venv_path = config.get("venv", "venv")
-
-    # Get deploy path
     deploy_path = config["deploy_path"]
+    venv_dir = f"{deploy_path}/{venv_path}"
+    requirements_file = f"{deploy_path}/requirements.txt"
 
-    # Check if virtualenv directory exists
+    # Check if virtualenv exists
     logger.info("Checking if virtualenv exists...")
-    if c.run(f"test -d {deploy_path}/{venv_path}", warn=True).failed:
-        logger.info(f"Creating virtualenv at {venv_path}")
-        c.run(f"python3 -m venv {deploy_path}/{venv_path}")
+    result = c.run(f"test -d {venv_dir}", warn=True)
+    if result is None or result.failed:
+        logger.info(f"Creating virtualenv at {venv_dir}")
+        c.run(f"python3 -m venv {venv_dir}")
 
-    # Install Python packages from requirements.txt
+    # Check for requirements.txt before installing
+    result = c.run(f"test -f {requirements_file}", warn=True)
+    if result is None or result.failed:
+        logger.warning(
+            "No requirements.txt found, skipping dependency install."
+        )
+        return
+
     logger.info("Installing Python dependencies...")
     c.run(
-        f"bash -c 'source {deploy_path}/{venv_path}/bin/activate && "
+        f"bash -c 'source {venv_dir}/bin/activate && "
         f"cd {deploy_path} && pip install -r requirements.txt > /dev/null'",
         pty=True
     )
 
-def migrate(c: Connection, config: dict) -> None:
+def migrate(c: Connection | DockerRunner | Context, config: dict) -> None:
     """
     Run Django database migrations after validating with `--plan`.
 
@@ -208,12 +234,14 @@ def migrate(c: Connection, config: dict) -> None:
         warn=True,
         hide=True
     )
-
-    # Abort if validation fails
-    if plan_check.failed:
+    # Abort if validation fails or if plan_check is None
+    if not plan_check or plan_check.failed:
         logger.error("Migration plan check failed. Aborting deploy.")
-        logger.error(f"Error output:\n{plan_check.stdout.strip()}")
-        raise RuntimeError("Migration validation failed.")
+        output = getattr(plan_check, "stdout", "").strip()
+        if output:
+            logger.error(f"Error output:\n{output}")
+        msg_raise = "Migration validation failed."
+        raise DeployerException(msg_raise)
 
     # Log success and continue to actual migration
     logger.info("Migration plan validated successfully.")
@@ -227,12 +255,16 @@ def migrate(c: Connection, config: dict) -> None:
             f"> /dev/null 2>&1'",
             pty=True
         )
-    except Exception as e:
+    except DeployerException as e:
         # Handle any exception during migration
         logger.error("Migration execution failed.")
-        raise RuntimeError(f"Migration error: {str(e)}") from e
+        msg_raise = f"Migration error: {e!s}"
+        raise DeployerException(msg_raise) from e
 
-def collect_static(c: Connection, config: dict) -> None:
+def collect_static(
+        c: Connection | DockerRunner | Context,
+        config: dict
+    ) -> None:
     """
     Collect static files using Django's `collectstatic` command.
 
@@ -261,7 +293,10 @@ def collect_static(c: Connection, config: dict) -> None:
         pty=True
     )
 
-def restart_services(c: Connection, config: dict) -> None:
+def restart_services(
+        c: Connection | DockerRunner | Context,
+        config: dict
+    ) -> None:
     """
     Restart Gunicorn server using background command execution.
 
@@ -307,8 +342,8 @@ def restart_services(c: Connection, config: dict) -> None:
         warn=True,
     )
 
-    # Abort if wsgi.py not found
-    if result.failed or not result.stdout.strip():
+    # Abort if wsgi.py not found or if result is None
+    if not result or result.failed or not result.stdout.strip():
         logger.error("Could not find wsgi.py file.")
         return
 
@@ -319,7 +354,7 @@ def restart_services(c: Connection, config: dict) -> None:
 
     # Log where wsgi.py was found
     logger.info(f"Found wsgi.py in {wsgi_path}, project: {project_name}")
-    logger.info(f"Running Gunicorn for project {project_name} in background...")
+    logger.info(f"Running Gunicorn for {project_name} in background...")
 
     # Command to launch Gunicorn in background, disowned
     cmd = (
@@ -336,7 +371,10 @@ def restart_services(c: Connection, config: dict) -> None:
     # Execute the command
     c.run(cmd, pty=False)
 
-def set_writable_dirs(c: Connection, config: dict) -> None:
+def set_writable_dirs(
+        c: Connection | DockerRunner | Context,
+        config: dict
+    ) -> None:
     """
     Set permissions on writable directories using chmod.
 
@@ -371,7 +409,8 @@ def set_writable_dirs(c: Connection, config: dict) -> None:
     for directory in writable_dirs:
         # Compose full path and chmod command
         full_path = os.path.join(deploy_path, directory)
-        chmod_cmd = f"chmod {'-R ' if recursive else ''}{chmod_mode} {full_path}"
+        recursive_flag = "-R " if recursive else ""
+        chmod_cmd = f"chmod {recursive_flag}{chmod_mode} {full_path}"
 
         logger.info(f"Setting writable permissions on: {directory}")
 
@@ -381,7 +420,10 @@ def set_writable_dirs(c: Connection, config: dict) -> None:
         else:
             c.run(chmod_cmd, warn=True)
 
-def create_backup(c: Connection | Context, config: dict) -> None:
+def create_backup(
+        c: Connection | DockerRunner | Context,
+        config: dict
+    ) -> None:
     """
     Create a compressed backup of the project before deployment.
 
@@ -404,7 +446,7 @@ def create_backup(c: Connection | Context, config: dict) -> None:
     # Build backup filename and path
     deploy_path = config["deploy_path"]
     site_name = config["name"]
-    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    timestamp = datetime.now(UTC).strftime("%Y%m%d%H%M%S")
     backup_file = os.path.join(backup_path, f"{site_name}_{timestamp}.tar.gz")
 
     logger.info(f"Creating backup for site '{site_name}' at {backup_file}")
@@ -412,7 +454,7 @@ def create_backup(c: Connection | Context, config: dict) -> None:
     # Ensure backup directory exists
     try:
         c.run(f"mkdir -p {backup_path}")
-    except Exception as e:
+    except DeployerException as e:
         logger.warning(f"Could not create backup folder: {e}")
         return
 
@@ -420,7 +462,7 @@ def create_backup(c: Connection | Context, config: dict) -> None:
     try:
         c.run(f"tar -czf {backup_file} -C {deploy_path} .")
         logger.info(f"Backup created: {backup_file}")
-    except Exception as e:
+    except DeployerException as e:
         logger.warning(f"Backup creation failed: {e}")
         return
 
@@ -428,17 +470,21 @@ def create_backup(c: Connection | Context, config: dict) -> None:
     try:
         result = c.run(f"ls -1t {backup_path}/{site_name}_*.tar.gz",
                        hide=True, warn=True)
-        files = result.stdout.strip().splitlines()
+        if result and result.stdout:
+            files = result.stdout.strip().splitlines()
 
         if len(files) > max_backups:
             old_files = files[max_backups:]
             for file in old_files:
                 c.run(f"rm -f {os.path.join(backup_path, file)}")
                 logger.info(f"Removed old backup: {file}")
-    except Exception as e:
+    except DeployerException as e:
         logger.warning(f"Could not cleanup old backups: {e}")
 
-def deploy_to_release_folder(c: Connection, config: dict) -> str:
+def deploy_to_release_folder(
+        c: Connection | DockerRunner | Context,
+        config: dict
+    ) -> str:
     """
     Move cloned code into a timestamped release folder.
 
@@ -451,34 +497,27 @@ def deploy_to_release_folder(c: Connection, config: dict) -> str:
     """
     logger = get_logger(config["name"])
 
-    site_name = config["name"]
     deploy_path = config["deploy_path"]
     releases_path = os.path.join(deploy_path, "releases")
 
     # Generate release folder name with timestamp (ms precision)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
+    timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S_%f")[:-3]
     release_path = os.path.join(releases_path, timestamp)
 
     # Temporary folder containing newly cloned code
     tmp_path = os.path.join(deploy_path, "__clone_tmp__")
-
-    # Symlink that always points to the current release
-    current_symlink = os.path.join(deploy_path, "current")
 
     # Ensure releases folder exists
     c.run(f"mkdir -p {releases_path}", warn=True)
 
     # Abort if the release folder already exists
     result = c.run(f"test -e {release_path}", warn=True, hide=True)
-    if result.ok:
+    if result and result.ok:
         logger.error(f"Release path already exists: {release_path}")
         return ""
 
     # Move __clone_tmp__ into the final release folder
     c.run(f"mv {tmp_path} {release_path}", warn=True)
-
-    # Point the current symlink to this new release
-    c.run(f"ln -sfn {release_path} {current_symlink}", warn=True)
 
     # Link the env file (used for secrets) into the new release
     env_source = os.path.join(deploy_path, "env")
@@ -488,11 +527,37 @@ def deploy_to_release_folder(c: Connection, config: dict) -> str:
 
     # Log release creation details
     logger.info(f"Release created at: {release_path}")
-    logger.info(f"Symlink updated: {current_symlink} -> {release_path}")
 
     return release_path
 
-def cleanup_old_releases(c: Connection, config: dict, keep: int = 5):
+def symlink_release_to_current(
+    c: Connection | DockerRunner | Context,
+    config: dict
+) -> None:
+    """
+    Symlink the release to the current symlink.
+
+    :param c: Fabric connection or context object.
+    :param config: Site configuration dictionary.
+    """
+    logger = get_logger(config["name"])
+    original_path = config["original_path"]
+    deploy_path = config["deploy_path"]
+
+    # Symlink that always points to the current release
+    current_symlink = os.path.join(original_path, "current")
+
+    # Point the current symlink to this new release
+    c.run(f"ln -sfn {deploy_path} {current_symlink}", warn=True)
+
+    # Log release creation details
+    logger.info(f"Symlink updated: {current_symlink} -> {deploy_path}")
+
+def cleanup_old_releases(
+    c: Connection | DockerRunner | Context,
+    config: dict,
+    keep: int = 5
+) -> None:
     """
     Delete older releases, keeping only the most recent `keep` ones.
 
@@ -500,20 +565,32 @@ def cleanup_old_releases(c: Connection, config: dict, keep: int = 5):
     :param config: Site configuration dictionary.
     :param keep: Number of most recent releases to keep.
     """
-    # Determine the path where release folders are stored
-    releases_path = os.path.join(config["deploy_path"], "releases")
+    logger = get_logger(config["name"])
 
-    # Get list of all releases sorted by modification time descending
+    # Derive the base project path from the current release path
+    current_release_path = config["deploy_path"]
+    project_root = os.path.dirname(current_release_path)
+    releases_path = project_root
+
+    # List all releases sorted by most recent
     result = c.run(f"ls -1dt {releases_path}/*", hide=True, warn=True)
+
+    if not result or not result.stdout:
+        logger.warning("No releases found. Skipping cleanup.")
+        return
+
     all_releases = result.stdout.strip().splitlines()
 
-    # If more than `keep` releases exist, delete the oldest ones
     if len(all_releases) > keep:
         to_delete = all_releases[keep:]
         for release in to_delete:
+            logger.info(f"Removing old release: {release}")
             c.run(f"rm -rf {release}", warn=True)
 
-def rollback_to_previous_release(c: Connection, config: dict) -> None:
+def rollback_to_previous_release(
+    c: Connection | DockerRunner | Context,
+    config: dict
+) -> None:
     """
     Roll back the `current` symlink to the previous valid release.
 
@@ -525,34 +602,48 @@ def rollback_to_previous_release(c: Connection, config: dict) -> None:
     """
     logger = get_logger(config['name'])
 
-    # Path to the folder containing release versions
-    releases_path = os.path.join(config['deploy_path'], "releases")
+    # Normalize path: remove /releases/... if present
+    deploy_path = config["deploy_path"]
+    if "/releases/" in deploy_path:
+        base_path = deploy_path.split("/releases/")[0]
+    else:
+        base_path = deploy_path
 
-    # Symlink path that points to the current active release
-    current_symlink = os.path.join(config['deploy_path'], "current")
+    # Path to all versioned releases
+    releases_path = os.path.join(base_path, "releases")
 
-    # List all release folders (sorted newest first)
-    result = c.run(f"ls -1dt {releases_path}/*", hide=True, warn=True)
+    # Path to current symlink
+    current_symlink = os.path.join(base_path, "current")
+
+    # List all available releases
+    result = c.run(f"ls -1dt {releases_path}/*", warn=True, hide=True)
+
+    if not result or result.failed or not result.stdout.strip():
+        logger.error("No releases found.")
+        return
+
     all_releases = result.stdout.strip().splitlines()
 
-    # Must have at least two releases to perform rollback
-    if len(all_releases) < 2:
+    # Ensure there are at least two releases to rollback
+    all_releases_min = 2
+    if len(all_releases) < all_releases_min:
         logger.error("No previous release found. Cannot rollback.")
         return
 
-    # Identify the failed and previous successful releases
+    # Roll back to the previous release
     failed_release = all_releases[0]
     previous_release = all_releases[1]
 
-    # Update symlink to point to previous release
     logger.warning(f"Rolling back to previous release: {previous_release}")
-    c.run(f"ln -sfn {previous_release} {current_symlink}")
+    c.run(f"ln -sfn {previous_release} {current_symlink}", warn=True)
 
-    # Remove the failed release folder
     logger.info(f"Removing failed release: {failed_release}")
     c.run(f"rm -rf {failed_release}", warn=True)
 
-def acquire_lock(c: Connection, config: dict) -> str:
+def acquire_lock(
+        c: Connection | DockerRunner | Context,
+        config: dict
+    ) -> str:
     """
     Create a lock file to prevent concurrent deployments.
 
@@ -561,7 +652,7 @@ def acquire_lock(c: Connection, config: dict) -> str:
 
     :param c: Fabric connection or context object.
     :param config: Site configuration dictionary.
-    :raises Exception: If a lock file is already present.
+    :raises DeployerException: If a lock file is already present.
     :return: A unique lock ID string.
     """
     logger = get_logger(config['name'])
@@ -571,20 +662,24 @@ def acquire_lock(c: Connection, config: dict) -> str:
     lock_file = os.path.join(deploy_path, ".deploy.lock")
 
     # Generate a unique ID using timestamp and UUID
-    lock_id = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex}"
+    lock_id = f"{datetime.now(UTC)
+                 .strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex}"
 
     # Detect system user (who initiated the deployment)
     user = getpass.getuser()
 
     # If lock already exists, abort
     result = c.run(f"test -f {lock_file}", warn=True, hide=True)
-    if result.ok:
-        logger.error("Deployment is already locked. Another deploy may be in progress.")
-        raise Exception("Deploy locked. Use `fab2 unlock --site=...` to force unlock if needed.")
+    if result and result.ok:
+        msg = "Deployment is already locked. Another deploy in progress."
+        logger.error(msg)
+        msg = "Deploy locked. Use `fab2 unlock --site=...`"
+        msg += "to force unlock if needed."
+        raise DeployerException(msg)
 
     # Compose informative lock file content
     content = (
-        f"Locked at: {datetime.now().isoformat()}\n"
+        f"Locked at: {datetime.now(UTC).isoformat()}\n"
         f"Host: {getattr(c, 'host', 'local')}\n"
         f"User: {user}\n"
         f"Lock ID: {lock_id}\n"
@@ -596,27 +691,38 @@ def acquire_lock(c: Connection, config: dict) -> str:
 
     return lock_id
 
-def release_lock(c: Connection, config: dict, lock_id: str) -> None:
+def release_lock(
+    c: Connection | DockerRunner | Context,
+    config: dict,
+    lock_id: str = "",
+    force: bool = False
+) -> None:
     """
     Remove the deployment lock file, if this session owns it.
 
-    The current session will only remove the lock if the stored lock ID
-    matches the one originally acquired.
+    If `force` is True, the lock file will be removed regardless
+    of the lock_id.
 
     :param c: Fabric connection or context object.
     :param config: Site configuration dictionary.
-    :param lock_id: The lock ID associated with this session.
+    :param lock_id: The lock ID associated with this session (optional).
+    :param force: Force deletion of lock file, ignoring ownership check.
     """
     logger = get_logger(config['name'])
-
-    # Path to the lock file
     deploy_path = config['deploy_path']
     lock_file = os.path.join(deploy_path, ".deploy.lock")
 
-    # Extract lock ID from file contents
+    if force:
+        c.run(f"rm -f {lock_file}", warn=True)
+        logger.info("Deployment lock forcibly released.")
+        return
+
     result = c.run(f"grep '^Lock ID:' {lock_file}", warn=True, hide=True)
-    current_id = result.stdout.strip().split(":", 1)[-1].strip() if result.ok else ""
-    # Only delete the lock if it matches this session's ID
+    if result and result.ok:
+        current_id = result.stdout.strip().split(":", 1)[-1].strip()
+    else:
+        current_id = ""
+
     if current_id == lock_id:
         c.run(f"rm -f {lock_file}", warn=True)
         logger.info("Deployment lock released.")

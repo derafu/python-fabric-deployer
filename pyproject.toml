@@ -1,0 +1,66 @@
+[tool.ruff]
+
+# Files to include in linting (Python source and stub files)
+include = ["**/*.py", "**/*.pyi"]
+
+# Folders to exclude from linting (e.g., virtual environments, build folders)
+exclude = [
+  ".git",
+  "__pycache__",
+  "build",
+  "dist",
+  ".venv",
+  "venv",
+]
+
+# Maximum allowed characters per line
+line-length = 79
+
+# Target Python version (used for version-specific rules)
+target-version = "py313"
+
+# Respect `.gitignore` files (e.g., to skip __init__.py or ignored files)
+respect-gitignore = true
+
+# Automatically fix issues using `ruff check --fix`
+fix = true
+
+[tool.ruff.lint]
+
+# List of enabled rule categories
+select = [
+  "D",    # pydocstyle: docstring conventions
+  "F",    # Pyflakes: code correctness errors
+  "E",    # pycodestyle: style errors
+  "W",    # pycodestyle: warnings
+  "I",    # isort: import order checks
+  "UP",   # Python upgrades: modern language features
+  "N",    # pep8-naming: naming conventions
+  "B",    # bugbear: common bug patterns
+  "A",    # flake8-builtins: avoid shadowing built-in names
+  "C90",  # mccabe: cyclomatic complexity
+  "ARG",  # flake8-unused-arguments: unused arguments detection
+  "DTZ",  # datetimez: best practices with datetime usage
+  "TRY",  # tryceratops: exception handling best practices
+  "SLF",  # flake8-self: discourage private attribute access
+  "ERA",  # eradicate: detect commented-out/dead code
+  "PL",   # pylint: extra validations
+  "RUF",  # Ruff-specific rules
+]
+
+# Rules to ignore (useful for relaxing or customizing enforcement)
+ignore = [
+  "D102",   # Allow missing docstrings in public methods
+  "D211",   # Allow no blank line before class docstrings
+  "D212",   # Allow docstring to start on the second line
+  "TRY400", # Allow `logger.error()` inside `except` blocks
+  "N818",   # Allow custom exception names without 'Error' suffix
+  "UP031",  # Allow use of `type(x) is T` instead of `isinstance()`
+  "TRY003", # Allow defining complex error messages outside exceptions
+  "ARG001", # Allow unused function arguments (e.g., for interface compliance)
+]
+
+[tool.ruff.lint.mccabe]
+
+# Maximum cyclomatic complexity allowed before a warning is raised
+max-complexity = 8

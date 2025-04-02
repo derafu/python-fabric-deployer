@@ -1,5 +1,13 @@
-import yaml
+"""
+Module for utility functions.
+
+This module provides utility functions for the fabricator project.
+
+"""
 from pathlib import Path
+
+import yaml
+
 from fabricator.logger import get_logger
 
 # Create a logger for this module
@@ -15,12 +23,14 @@ def load_sites() -> dict:
     :return: A dictionary of site configurations.
     """
     # Open and parse the YAML file, returning a dictionary
-    with open(SITES_FILE, "r") as f:
+    with open(SITES_FILE) as f:
         return yaml.safe_load(f)
 
 def print_site_list() -> None:
     """
     Log all configured sites and their repository URLs.
+
+    :return: None
     """
     # Load site configurations from the YAML file
     sites = load_sites()
