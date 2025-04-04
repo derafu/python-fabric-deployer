@@ -1,3 +1,4 @@
+# ruff: noqa: C901
 """
 Module for deployment recipes.
 
@@ -49,10 +50,6 @@ def check_remote(c: Connection | DockerRunner | Context, config: dict) -> None:
         msg_raise = f"Invalid configuration for Docker site '{config['name']}'"
         raise DeployerException(msg_raise)
 
-    # Ensure that the remote deploy path exists
-    c.run(f"mkdir -p {config['deploy_path']}", warn=True)
-    logger.info("Ensured deployment path exists.")
-
 def update_code(c: Connection | DockerRunner | Context, config: dict) -> None:
     """
     Clone repository to temp folder preserving main deployment directory.
@@ -84,8 +81,15 @@ def update_code(c: Connection | DockerRunner | Context, config: dict) -> None:
     )
 
     # Remove any previous temporary clone if exists
-    logger.info("Cloning into temporary directory...")
+    logger.info("Removing any previous temporary clone...")
     c.run(f"rm -rf {tmp_clone}", warn=True)
+
+    # Create the temporary directory with sudo and assign permissions
+    remote_user = c.run("whoami", hide=True)
+    if remote_user:
+        remote_user = remote_user.stdout.strip()
+        c.sudo(f"mkdir -p {tmp_clone}")
+        c.sudo(f"chown {remote_user}:{remote_user} {tmp_clone}")
 
     # Perform the actual git clone into the temporary directory
     c.run(f"git clone --branch {branch} {repo} {tmp_clone}")
@@ -93,7 +97,10 @@ def update_code(c: Connection | DockerRunner | Context, config: dict) -> None:
     # Log confirmation that clone completed
     logger.info("Code cloned into temporary folder (not moved yet).")
 
-def shared_files(c: Connection | DockerRunner | Context, config: dict) -> None:
+def shared_files(
+        c: Connection | DockerRunner | Context,
+        config: dict
+    ) -> None:
     """
     Create symlinks for shared files and directories between releases.
 
@@ -119,7 +126,11 @@ def shared_files(c: Connection | DockerRunner | Context, config: dict) -> None:
     release_dir = config['deploy_path']
 
     # Ensure the shared directory exists
-    result = c.run(f"mkdir -p {shared_dir}", warn=True)
+    remote_user = c.run("whoami", hide=True)
+    if remote_user:
+        remote_user = remote_user.stdout.strip()
+        c.sudo(f"mkdir -p {shared_dir}")
+        c.sudo(f"chown {remote_user}:{remote_user} {shared_dir}")
 
     # Handle shared files
     for file in shared_files:
@@ -160,7 +171,11 @@ def shared_files(c: Connection | DockerRunner | Context, config: dict) -> None:
         # If the shared directory doesn't exist, create it
         result = c.run(f"test -d {shared_subdir}", warn=True)
         if result and result.failed:
-            c.run(f"mkdir -p {shared_subdir}", warn=True)
+            remote_user = c.run("whoami", hide=True)
+            if remote_user:
+                remote_user = remote_user.stdout.strip()
+                c.sudo(f"mkdir -p {shared_dir}", warn=True)
+                c.sudo(f"chown {remote_user}:{remote_user} {shared_dir}")
 
         # Create or update the symlink in the release directory
         c.run(f"ln -sfn {shared_subdir} {release_subdir}", warn=True)
@@ -259,6 +274,21 @@ def migrate(c: Connection | DockerRunner | Context, config: dict) -> None:
         # Handle any exception during migration
         logger.error("Migration execution failed.")
         msg_raise = f"Migration error: {e!s}"
+        raise DeployerException(msg_raise) from e
+
+    logger.info("Running Django db_seed...")
+    try:
+        # Execute real migration command
+        c.run(
+            f"bash -c 'source {deploy_path}/{venv_path}/bin/activate && "
+            f"cd {deploy_path} && python manage.py db_seed "
+            f"> /dev/null 2>&1'",
+            pty=True
+        )
+    except DeployerException as e:
+        # Handle any exception during migration
+        logger.error("Seed execution failed.")
+        msg_raise = f"Seed error: {e!s}"
         raise DeployerException(msg_raise) from e
 
 def collect_static(
@@ -452,11 +482,11 @@ def create_backup(
     logger.info(f"Creating backup for site '{site_name}' at {backup_file}")
 
     # Ensure backup directory exists
-    try:
-        c.run(f"mkdir -p {backup_path}")
-    except DeployerException as e:
-        logger.warning(f"Could not create backup folder: {e}")
-        return
+    remote_user = c.run("whoami", hide=True)
+    if remote_user:
+        remote_user = remote_user.stdout.strip()
+        c.sudo(f"mkdir -p {backup_path}")
+        c.sudo(f"chown {remote_user}:{remote_user} {backup_path}")
 
     # Create compressed backup using tar
     try:
@@ -508,7 +538,11 @@ def deploy_to_release_folder(
     tmp_path = os.path.join(deploy_path, "__clone_tmp__")
 
     # Ensure releases folder exists
-    c.run(f"mkdir -p {releases_path}", warn=True)
+    remote_user = c.run("whoami", hide=True)
+    if remote_user:
+        remote_user = remote_user.stdout.strip()
+        c.sudo(f"mkdir -p {releases_path}", warn=True)
+        c.sudo(f"chown {remote_user}:{remote_user} {releases_path}")
 
     # Abort if the release folder already exists
     result = c.run(f"test -e {release_path}", warn=True, hide=True)
@@ -517,12 +551,12 @@ def deploy_to_release_folder(
         return ""
 
     # Move __clone_tmp__ into the final release folder
-    c.run(f"mv {tmp_path} {release_path}", warn=True)
+    c.sudo(f"mv {tmp_path} {release_path}", warn=True)
 
     # Link the env file (used for secrets) into the new release
     env_source = os.path.join(deploy_path, "env")
     env_target = os.path.join(release_path, "env")
-    c.run(f"ln -sf {env_source} {env_target}", warn=True)
+    c.sudo(f"ln -sf {env_source} {env_target}", warn=True)
     logger.info(f"env linked: {env_target} -> {env_source}")
 
     # Log release creation details
@@ -659,6 +693,21 @@ def acquire_lock(
 
     # Path where the lock file will be created
     deploy_path = config['deploy_path']
+
+    # Check if the deploy directory exists, if not, create it
+    logger.info("Ensured deployment path exists.")
+    result = c.run(f"test -d {deploy_path}", warn=True, hide=True)
+    if not result or not result.ok:
+        # Create the temporary directory with sudo and assign permissions
+        logger.info(f"Creating deploy directory: {deploy_path}")
+        remote_user = c.run("whoami", hide=True)
+        if remote_user:
+            remote_user = remote_user.stdout.strip()
+            c.sudo(f"mkdir -p {deploy_path}")
+            c.sudo(f"chmod 775 {deploy_path}")
+            c.sudo(f"chown {remote_user}:{remote_user} {deploy_path}")
+
+    # Path to the lock file
     lock_file = os.path.join(deploy_path, ".deploy.lock")
 
     # Generate a unique ID using timestamp and UUID
@@ -685,8 +734,13 @@ def acquire_lock(
         f"Lock ID: {lock_id}\n"
     )
 
+    # Create the lock file explicitly and then write to it
+    c.sudo(f"touch {lock_file}")
+    # Set appropriate permissions 664 allows group read/write
+    c.sudo(f"chmod 664 {lock_file}")
+
     # Write lock file to remote system
-    c.run(f"echo '{content}' > {lock_file}")
+    c.run(f"printf '{content}' | sudo tee {lock_file} > /dev/null")
     logger.info("Deployment lock acquired.")
 
     return lock_id

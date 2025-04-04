@@ -52,23 +52,7 @@ def deploy_site(c: Connection | DockerRunner | Context, config: dict) -> None:
     # Initialize logger for this site
     logger = get_logger(config['name'])
 
-    # Detect runner type: "local", "docker", or "ssh" (default is local)
-    runner_type = config.get("runner", "local")
-    if runner_type == "docker":
-        # If using Docker, wrap the context with a DockerRunner
-        container = config["docker_container"]
-        docker_user = config.get("docker_user", "root")
-        runner = DockerRunner(
-            container_name=container,
-            inner_runner=Context(),
-            user=docker_user
-        )
-        c = runner
-        host = f"docker:{container}"
-    else:
-        # Fallback to local or SSH connection
-        host = getattr(c, "host", "local")
-
+    host = getattr(c, "host", "local")
     # Log the start of deployment
     msg = f"Starting deployment for '{config['name']}' on '{host}'"
     logger.info(msg)

@@ -216,4 +216,3 @@ www.examplereleases.cl:
   branch: main
   runner: local                          # Optional: "local", "ssh", or "docker" (default is "local")
   max_releases: 3                        # Optional: number of releases to keep in releases/
-

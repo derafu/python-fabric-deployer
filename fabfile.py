@@ -17,45 +17,74 @@ from invoke.context import Context
 from fabricator.deploy import deploy_site
 from fabricator.logger import get_logger
 from fabricator.recipes import release_lock, rollback_to_previous_release
+from fabricator.runners import DockerRunner
 from fabricator.utils import load_sites, print_site_list
 
 
 def get_connection(
-        fallback_connection: Connection | Context
-    ) -> Connection | Context:
+    fallback_connection: Connection | DockerRunner | Context,
+    config: dict | None = None
+) -> Connection | DockerRunner | Context:
     """
-    Return a connection object based on environment variables.
+    Return a connection object based on environment variables or config.
 
-    If DEPLOYER_HOST is defined, return a remote SSH connection using
-    that host, user, and port. Otherwise, return the provided fallback
-    connection (usually local Context or Connection).
+    Priority:
+    1. Environment variables: DEPLOYER_HOST, USER, PORT
+    2. Docker runner if configured.
+    3. Host/port from config.
+    4. Fallback connection or local.
 
-    :param fallback_connection: A default Fabric Connection or Context.
-    :return: A Fabric Connection instance (local or remote).
+    :param fallback_connection: Local context or default connection
+    :param config: Optional site configuration dictionary
+    :return: Fabric Connection, DockerRunner, or Context
     """
+    # 1. If environment variable is set, override all
     host = os.getenv("DEPLOYER_HOST")
     user = os.getenv("DEPLOYER_USER")
     port = os.getenv("DEPLOYER_PORT")
-
     if host:
         return Connection(
             host=host,
             user=user or None,
             port=int(port) if port else 22
         )
+
+    # 2. If Docker runner is configured
+    if config and config.get("runner") == "docker":
+        container = config["docker_container"]
+        docker_user = config.get("docker_user", "root")
+        return DockerRunner(
+            container_name=container,
+            inner_runner=Context(),
+            user=docker_user
+        )
+
+    # 3. If host is defined in config and not already remote
+    if (
+        config
+        and "host" in config
+        and getattr(fallback_connection, "host", "localhost") == "localhost"
+    ):
+        return Connection(
+            host=config["host"],
+            port=config.get("port", 22)
+        )
+
+    # 4. Fallback to local context if no remote host is detected
+    if getattr(fallback_connection, "host", "localhost") == "localhost":
+        return Context()
+
+    # 5. Default fallback
     return fallback_connection
 
 @task(help={"site": "Name of the site to deploy"})
-def deploy(c: Connection | Context, site: str) -> None:
+def deploy(c: Connection | DockerRunner | Context, site: str) -> None:
     """
     Deploy a single site defined in the configuration file.
 
     :param c: Fabric connection object.
     :param site: Name of the site defined in sites.yml.
     """
-    # Resolve connection using environment vars if present
-    c = get_connection(c)
-
     # Load all site definitions from the YAML config
     sites = load_sites()
 
@@ -71,40 +100,32 @@ def deploy(c: Connection | Context, site: str) -> None:
     config = sites[site]
     config['name'] = site
 
-    # If a host is defined and we're running locally, override connection
-    if "host" in config and getattr(c, "host", None) == "localhost":
-        c = Connection(config["host"])
+    # Resolve connection using environment vars if present
+    c = get_connection(c, config = config)
 
-    # Use local context if connection is still local
-    if getattr(c, "host", "localhost") == "localhost":
-        c = Context()
-
-    # Begin deployment
-    logger.info(f"Starting deployment for site: {site}")
     deploy_site(c, config)
 
 @task
-def deploy_all(c: Connection | Context) -> None:
+def deploy_all(c: Connection | DockerRunner | Context) -> None:
     """
     Deploy all sites listed in sites.yml.
 
     :param c: Fabric connection object.
     """
-    # Use remote connection if available from environment
-    c = get_connection(c)
-
     # Load all site definitions
     sites = load_sites()
 
     # Deploy each site iteratively
     for site, config in sites.items():
         config['name'] = site
+        # Use remote connection if available from environment
+        c = get_connection(c, config = config)
         logger = get_logger(site)
         logger.info(f"Deploying site: {site}")
         deploy_site(c, config)
 
 @task
-def list_sites(c: Connection | Context) -> None:
+def list_sites(c: Connection | DockerRunner | Context) -> None:
     """
     Display all available site configurations.
 
@@ -114,16 +135,13 @@ def list_sites(c: Connection | Context) -> None:
     print_site_list()
 
 @task(help={"site": "Name of the site to rollback"})
-def rollback(c: Connection | Context, site: str) -> None:
+def rollback(c: Connection | DockerRunner | Context, site: str) -> None:
     """
     Rollback a site to its previous release.
 
     :param c: Fabric connection object.
     :param site: Name of the site to rollback.
     """
-    # Resolve connection using environment vars if present
-    c = get_connection(c)
-
     # Initialize logger
     logger = get_logger(site)
 
@@ -139,41 +157,39 @@ def rollback(c: Connection | Context, site: str) -> None:
     config = sites[site]
     config['name'] = site
 
+    # Resolve connection using environment vars if present
+    c = get_connection(c, config = config)
     # Log and execute rollback
     logger.info(f"Rolling back site: {site}")
     rollback_to_previous_release(c, config)
 
 @task
-def rollback_all(c: Connection | Context) -> None:
+def rollback_all(c: Connection | DockerRunner | Context) -> None:
     """
     Rollback all sites to their previous release.
 
     :param c: Fabric connection object.
     """
-    # Use remote connection if configured
-    c = get_connection(c)
-
     # Load all site configs
     sites = load_sites()
 
     # Apply rollback to each one
     for site, config in sites.items():
         config['name'] = site
+        # Resolve connection using environment vars if present
+        c = get_connection(c, config = config)
         logger = get_logger(site)
         logger.info(f"Rolling back site: {site}")
         rollback_to_previous_release(c, config)
 
 @task(help={"site": "Name of the site to unlock"})
-def unlock(c: Connection | Context, site: str) -> None:
+def unlock(c: Connection | DockerRunner | Context, site: str) -> None:
     """
     Remove the lock file for a specific site.
 
     :param c: Fabric connection object.
     :param site: Name of the site to unlock.
     """
-    # Resolve connection using environment vars if present
-    c = get_connection(c)
-
     # Initialize logger
     logger = get_logger(site)
 
@@ -188,25 +204,28 @@ def unlock(c: Connection | Context, site: str) -> None:
     # Set site name and perform unlock
     config = sites[site]
     config['name'] = site
+
+    # Resolve connection using environment vars if present
+    c = get_connection(c, config = config)
+
     logger.info(f"Unlocking site: {site}")
     release_lock(c, config, force=True)
 
 @task
-def unlock_all(c: Connection | Context) -> None:
+def unlock_all(c: Connection | DockerRunner | Context) -> None:
     """
     Unlock all sites by removing their lock files.
 
     :param c: Fabric connection object.
     """
-    # Resolve connection if needed
-    c = get_connection(c)
-
     # Load site configurations
     sites = load_sites()
 
     # Unlock each one using force
     for site, config in sites.items():
         config['name'] = site
+        # Resolve connection if needed
+        c = get_connection(c, config = config)
         logger = get_logger(site)
         logger.info(f"Unlocking site: {site}")
         release_lock(c, config, force=True)
