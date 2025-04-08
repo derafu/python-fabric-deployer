@@ -4,6 +4,7 @@
 ![GitHub last commit](https://img.shields.io/github/last-commit/derafu/python-fabric-deployer/main)
 ![GitHub code size in bytes](https://img.shields.io/github/languages/code-size/derafu/python-fabric-deployer)
 ![GitHub issues](https://img.shields.io/github/issues-raw/derafu/python-fabric-deployer)
+![CI](https://github.com/derafu/python-fabric-deployer/actions/workflows/ci.yml/badge.svg)
 
 
 Derafu Deployer is a lightweight deployment system for managing multiple Django sites using Fabric2 . It supports deployment via local, SSH, or Docker runners, and provides key features like automatic backups, shared files/directories management, and per-site configuration.
