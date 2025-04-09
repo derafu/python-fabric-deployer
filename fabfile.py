@@ -26,17 +26,26 @@ def get_connection(
     config: dict | None = None
 ) -> Connection | DockerRunner | Context:
     """
-    Return a connection object based on environment variables or config.
+    Resolve the appropriate connection object for the site.
 
-    Priority:
-    1. Environment variables: DEPLOYER_HOST, USER, PORT
-    2. Docker runner if configured.
-    3. Host/port from config.
-    4. Fallback connection or local.
+    Selects the correct runner based on environment variables,
+    Docker settings, or host definitions. Priority order:
 
-    :param fallback_connection: Local context or default connection
-    :param config: Optional site configuration dictionary
-    :return: Fabric Connection, DockerRunner, or Context
+    1. Environment variables: ``DEPLOYER_HOST``, ``DEPLOYER_USER``,
+    ``DEPLOYER_PORT``
+    2. Docker runner (if ``runner: docker`` is set in config)
+    3. SSH host/port defined in config
+    4. Fallback connection
+    5. Default to local context
+
+    :param fallback_connection: Default local or remote runner.
+    :type fallback_connection: Union[Connection, DockerRunner, Context]
+
+    :param config: Optional site config loaded from YAML.
+    :type config: dict or None
+
+    :return: A connection object suitable for deployment.
+    :rtype: Union[Connection, DockerRunner, Context]
     """
     # 1. If environment variable is set, override all
     host = os.getenv("DEPLOYER_HOST")
@@ -82,8 +91,14 @@ def deploy(c: Connection | DockerRunner | Context, site: str) -> None:
     """
     Deploy a single site defined in the configuration file.
 
-    :param c: Fabric connection object.
-    :param site: Name of the site defined in sites.yml.
+    Loads site-specific configuration, resolves the proper connection
+    (local, Docker, or SSH), and runs the full deployment process.
+
+    :param c: Fabric connection or context object.
+    :type c: Union[Connection, DockerRunner, Context]
+
+    :param site: Name of the site as defined in ``sites.yml``.
+    :type site: str
     """
     # Load all site definitions from the YAML config
     sites = load_sites()
@@ -108,9 +123,13 @@ def deploy(c: Connection | DockerRunner | Context, site: str) -> None:
 @task
 def deploy_all(c: Connection | DockerRunner | Context) -> None:
     """
-    Deploy all sites listed in sites.yml.
+    Deploy all sites listed in the configuration file.
 
-    :param c: Fabric connection object.
+    Iterates through all entries in ``sites.yml`` and runs the
+    deployment pipeline for each one sequentially.
+
+    :param c: Fabric connection or context object.
+    :type c: Union[Connection, DockerRunner, Context]
     """
     # Load all site definitions
     sites = load_sites()
@@ -127,9 +146,13 @@ def deploy_all(c: Connection | DockerRunner | Context) -> None:
 @task
 def list_sites(c: Connection | DockerRunner | Context) -> None:
     """
-    Display all available site configurations.
+    Display all configured sites and their repository URLs.
 
-    :param c: Fabric connection object.
+    Loads site data from ``sites.yml`` and prints the site name
+    alongside its associated Git repository.
+
+    :param c: Fabric connection or context object.
+    :type c: Union[Connection, DockerRunner, Context]
     """
     # Print table of available site names
     print_site_list()
@@ -137,10 +160,15 @@ def list_sites(c: Connection | DockerRunner | Context) -> None:
 @task(help={"site": "Name of the site to rollback"})
 def rollback(c: Connection | DockerRunner | Context, site: str) -> None:
     """
-    Rollback a site to its previous release.
+    Rollback a site to the previous release.
 
-    :param c: Fabric connection object.
+    Identifies the most recent backup release and reverts to it.
+
+    :param c: Fabric connection or context object.
+    :type c: Union[Connection, DockerRunner, Context]
+
     :param site: Name of the site to rollback.
+    :type site: str
     """
     # Initialize logger
     logger = get_logger(site)
@@ -166,9 +194,13 @@ def rollback(c: Connection | DockerRunner | Context, site: str) -> None:
 @task
 def rollback_all(c: Connection | DockerRunner | Context) -> None:
     """
-    Rollback all sites to their previous release.
+    Rollback all sites to their previous releases.
 
-    :param c: Fabric connection object.
+    Iterates through all configured sites and performs a rollback
+    to their last known good deployment.
+
+    :param c: Fabric connection or context object.
+    :type c: Union[Connection, DockerRunner, Context]
     """
     # Load all site configs
     sites = load_sites()
@@ -185,10 +217,16 @@ def rollback_all(c: Connection | DockerRunner | Context) -> None:
 @task(help={"site": "Name of the site to unlock"})
 def unlock(c: Connection | DockerRunner | Context, site: str) -> None:
     """
-    Remove the lock file for a specific site.
+    Force-remove the deployment lock for a specific site.
 
-    :param c: Fabric connection object.
+    Useful when a previous deployment was interrupted and the
+    lock wasn't released.
+
+    :param c: Fabric connection or context object.
+    :type c: Union[Connection, DockerRunner, Context]
+
     :param site: Name of the site to unlock.
+    :type site: str
     """
     # Initialize logger
     logger = get_logger(site)
@@ -214,9 +252,12 @@ def unlock(c: Connection | DockerRunner | Context, site: str) -> None:
 @task
 def unlock_all(c: Connection | DockerRunner | Context) -> None:
     """
-    Unlock all sites by removing their lock files.
+    Remove lock files for all sites defined in ``sites.yml``.
 
-    :param c: Fabric connection object.
+    Useful when recovering from interrupted deploys or rollbacks.
+
+    :param c: Fabric connection or context object.
+    :type c: Union[Connection, DockerRunner, Context]
     """
     # Load site configurations
     sites = load_sites()

@@ -11,12 +11,21 @@ import logging
 
 def get_logger(name: str = "deploy") -> logging.Logger:
     """
-    Return a reusable logger configured to output to the console.
+    Get or create a reusable console-based logger by name.
 
-    Ensures that handlers are added only once to avoid duplicate logs.
+    This function returns a configured `logging.Logger` instance with
+    an attached console handler. It prevents duplication of handlers
+    if the logger is requested multiple times.
 
-    :param name: Name to identify the logger (e.g., the site name).
-    :return: Configured Logger instance.
+    The logger outputs messages in the format:
+    `[timestamp] [LEVEL] message`.
+
+    :param name: Name to identify the logger instance. Typically used
+                to separate logs by context or project.
+    :type name: str
+
+    :return: A configured `Logger` object ready for use.
+    :rtype: logging.Logger
     """
     logger = logging.getLogger(name)
 

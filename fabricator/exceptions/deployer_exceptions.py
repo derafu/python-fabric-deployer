@@ -8,9 +8,17 @@ class DeployerException(Exception):
         """
         Initialize the DeployerException.
 
-        :param message: The error message.
-        :param code: The error code.
-        :param params: The error parameters.
+        Stores the error message, optional code, and any additional
+        parameters passed for debugging or context.
+
+        :param message: Description of the error.
+        :type message: str
+
+        :param code: Optional error code.
+        :type code: int or str, optional
+
+        :param params: Optional error context or data.
+        :type params: dict or any, optional
         """
         self.message = message
         self.code = code
@@ -19,9 +27,12 @@ class DeployerException(Exception):
 
     def __str__(self):
         """
-        Return a string representation of the error.
+        Return a formatted string representation of the error.
 
-        :return: A string representation of the error.
+        If a code is provided, it is included in the output. Otherwise,
+        only the message is shown.
+
+        :return: A string representing the error.
         :rtype: str
         """
         if self.code is not None:

@@ -55,24 +55,47 @@ class SSHRunner(Connection):
 class DockerRunner:
 
     """
-    Docker-based runner to execute commands inside a container.
+    Executes shell commands inside a Docker container using Fabric.
 
-    :param container_name: Name of the Docker container.
-    :param inner_runner: Fabric Context or Connection to wrap.
-    :param user: User to run commands as inside the container.
+    The ``DockerRunner`` class wraps a Fabric ``Context`` or ``Connection``
+    to run commands via ``docker exec``, allowing integration with both
+    local and remote execution environments.
+
+    :param container_name: Name of the Docker container where commands
+                        should be run.
+    :type container_name: str
+
+    :param inner_runner: The Fabric runner (local or remote).
+    :type inner_runner: Union[Context, Connection]
+
+    :param user: User to run commands as (default is "root").
+    :type user: str
+
+    :ivar container_name: Target container name.
+    :ivar inner_runner: Underlying runner used to execute commands.
+    :ivar user: User to run commands as inside the container.
     """
 
-    def __init__(self, container_name: str,
-                 inner_runner: Context | Connection, user: str = "root"):
+    def __init__(
+            self,
+            container_name: str,
+            inner_runner: Context | Connection,
+            user: str = "root"
+        ):
         """
         Initialize a new DockerRunner instance.
 
-        :param container_name: Name of the Docker container to execute
-        commands in.
-        :param inner_runner: The underlying runner (Context or Connection)
-        to use.
-        :param user: User to run commands as inside the container
-        (default: root).
+        Sets internal attributes for later use in command execution via
+        ``docker exec``.
+
+        :param container_name: Docker container name.
+        :type container_name: str
+
+        :param inner_runner: Base Fabric runner (Context or Connection).
+        :type inner_runner: Union[Context, Connection]
+
+        :param user: Optional user to execute commands as (default: "root").
+        :type user: str
         """
         # Store container name for Docker exec
         self.container_name = container_name
@@ -85,11 +108,20 @@ class DockerRunner:
 
     def run(self, command: str, **kwargs) -> Result | None:
         """
-        Run a command inside the Docker container.
+        Execute a command inside the Docker container.
 
-        :param command: Command string to execute.
-        :param kwargs: Additional options for the runner.
-        :return: Result of the executed command.
+        Wraps the given command with ``docker exec`` and delegates execution
+        to the inner Fabric runner.
+
+        :param command: Shell command to run inside the container.
+        :type command: str
+
+        :param kwargs: Extra arguments for the Fabric runner
+        (e.g., hide, warn).
+        :type kwargs: dict
+
+        :return: Result object from the Fabric runner.
+        :rtype: Result or None
         """
         # Format docker exec command
         full_cmd = (
@@ -103,19 +135,32 @@ class DockerRunner:
 
     def sudo(self, command: str, **kwargs) -> Result | None:
         """
-        Run a command as root via `sudo` inside the container.
+        Run a command with ``sudo`` inside the Docker container.
 
-        :param command: Command string to execute.
-        :param kwargs: Additional options for the runner.
-        :return: Result of the executed command.
+        This method prepends ``sudo`` to the command and runs it via
+        ``docker exec``.
+
+        :param command: Shell command to run with elevated privileges.
+        :type command: str
+
+        :param kwargs: Extra options passed to the Fabric runner.
+        :type kwargs: dict
+
+        :return: Result object from the command execution.
+        :rtype: Result or None
         """
         return self.run(f"sudo {command}", **kwargs)
 
     def cd(self, path: str):
         """
-        Change directory inside the container context.
+        Change directory within the Docker container context.
 
-        :param path: Directory path.
-        :return: Context manager for directory change.
+        This returns the context manager from the inner Fabric runner.
+
+        :param path: Directory path to switch to.
+        :type path: str
+
+        :return: A context manager for changing directories.
+        :rtype: ContextManager
         """
         return self.inner_runner.cd(path)

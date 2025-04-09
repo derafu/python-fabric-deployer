@@ -22,10 +22,19 @@ from fabricator.runners import DockerRunner
 
 def check_remote(c: Connection | DockerRunner | Context, config: dict) -> None:
     """
-    Ensure that all required configuration fields are provided.
+    Validate the configuration and runner for a deployment site.
 
-    :param c: Fabric connection object.
+    Ensures that mandatory keys like `repository` and `deploy_path`
+    exist in the configuration. Raises an exception if required fields
+    are missing or misconfigured.
+
+    :param c: Fabric runner or connection object.
+    :type c: Union[Connection, DockerRunner, Context]
+
     :param config: Site configuration dictionary.
+    :type config: dict
+
+    :raises DeployerException: If configuration is invalid.
     """
     logger = get_logger(config['name'])
 
@@ -52,10 +61,16 @@ def check_remote(c: Connection | DockerRunner | Context, config: dict) -> None:
 
 def update_code(c: Connection | DockerRunner | Context, config: dict) -> None:
     """
-    Clone repository to temp folder preserving main deployment directory.
+    Clone the repository into a temporary directory.
 
-    :param c: Fabric connection or context object.
+    Removes all files in the deployment path except essential ones,
+    creates a temporary folder, and performs a fresh `git clone` into it.
+
+    :param c: Fabric runner or connection object.
+    :type c: Union[Connection, DockerRunner, Context]
+
     :param config: Site configuration dictionary.
+    :type config: dict
     """
     logger = get_logger(config['name'])
 
@@ -102,14 +117,16 @@ def shared_files(
         config: dict
     ) -> None:
     """
-    Create symlinks for shared files and directories between releases.
+    Symlink shared files and folders from the shared path.
 
-    Moves existing files or directories into `shared/` before linking,
-    if they are not already symlinks. Ensures that each shared element
-    exists and links correctly.
+    Moves pre-existing files into a `shared/` directory and then links
+    them into the current release.
 
-    :param c: Fabric connection object.
+    :param c: Fabric runner or connection object.
+    :type c: Union[Connection, DockerRunner, Context]
+
     :param config: Site configuration dictionary.
+    :type config: dict
     """
     logger = get_logger(config['name'])
 
@@ -183,13 +200,16 @@ def shared_files(
 
 def install_deps(c: Connection | DockerRunner | Context, config: dict) -> None:
     """
-    Create and activate a virtual environment, then install dependencies.
+    Install Python dependencies in a virtual environment.
 
-    If the virtualenv doesn't exist, it is created. Then pip installs all
-    requirements listed in `requirements.txt`.
+    Creates a `venv` folder if it does not exist and installs packages
+    from `requirements.txt` using pip.
 
-    :param c: Fabric connection object.
+    :param c: Fabric runner or connection object.
+    :type c: Union[Connection, DockerRunner, Context]
+
     :param config: Site configuration dictionary.
+    :type config: dict
     """
     logger = get_logger(config['name'])
 
@@ -222,13 +242,18 @@ def install_deps(c: Connection | DockerRunner | Context, config: dict) -> None:
 
 def migrate(c: Connection | DockerRunner | Context, config: dict) -> None:
     """
-    Run Django database migrations after validating with `--plan`.
+    Run Django migrations and optionally run `db_seed`.
 
-    This ensures that all migrations are valid before executing
-    them to avoid breaking the database during deployment.
+    Validates the migration plan before executing it to prevent errors
+    from being deployed to production.
 
-    :param c: Fabric connection object.
+    :param c: Fabric runner or connection object.
+    :type c: Union[Connection, DockerRunner, Context]
+
     :param config: Site configuration dictionary.
+    :type config: dict
+
+    :raises DeployerException: If validation or execution fails.
     """
     logger = get_logger(config['name'])
 
@@ -296,13 +321,15 @@ def collect_static(
         config: dict
     ) -> None:
     """
-    Collect static files using Django's `collectstatic` command.
+    Run Django's `collectstatic` to gather static files.
 
-    Runs `python manage.py collectstatic --noinput` from within
-    the virtual environment and deployment path.
+    Executes `manage.py collectstatic --noinput` inside the virtualenv.
 
-    :param c: Fabric connection object.
+    :param c: Fabric runner or connection object.
+    :type c: Union[Connection, DockerRunner, Context]
+
     :param config: Site configuration dictionary.
+    :type config: dict
     """
     logger = get_logger(config['name'])
 
@@ -328,13 +355,16 @@ def restart_services(
         config: dict
     ) -> None:
     """
-    Restart Gunicorn server using background command execution.
+    Start or restart Gunicorn for the project.
 
-    Skips execution if the environment is local. Attempts to detect
-    the `wsgi.py` file and launch Gunicorn with socket and logs.
+    Looks for `wsgi.py`, then launches Gunicorn with the appropriate
+    socket and logging configuration, unless running locally.
 
-    :param c: Fabric connection object.
+    :param c: Fabric runner or connection object.
+    :type c: Union[Connection, DockerRunner, Context]
+
     :param config: Site configuration dictionary.
+    :type config: dict
     """
     logger = get_logger(config['name'])
 
@@ -406,21 +436,15 @@ def set_writable_dirs(
         config: dict
     ) -> None:
     """
-    Set permissions on writable directories using chmod.
+    Set permissions on writable directories as defined in the config.
 
-    Supports recursive mode, sudo usage, and custom chmod values
-    defined in the site's configuration.
+    Supports options for recursion, use of `sudo`, and custom chmod modes.
 
-    YAML example:
-      writable_dirs:
-        - logs
-        - media
-      writable_recursive: true
-      writable_use_sudo: false
-      writable_chmod_mode: 775
+    :param c: Fabric runner or connection object.
+    :type c: Union[Connection, DockerRunner, Context]
 
-    :param c: Fabric connection object.
     :param config: Site configuration dictionary.
+    :type config: dict
     """
     logger = get_logger(config['name'])
 
@@ -455,12 +479,15 @@ def create_backup(
         config: dict
     ) -> None:
     """
-    Create a compressed backup of the project before deployment.
+    Create a compressed `.tar.gz` backup before deployment.
 
-    Also removes older backups if the maximum limit is exceeded.
+    Also removes older backups if the number exceeds `max_backups`.
 
-    :param c: Fabric connection or context object.
+    :param c: Fabric runner or connection object.
+    :type c: Union[Connection, DockerRunner, Context]
+
     :param config: Site configuration dictionary.
+    :type config: dict
     """
     logger = get_logger(config["name"])
 
@@ -516,14 +543,18 @@ def deploy_to_release_folder(
         config: dict
     ) -> str:
     """
-    Move cloned code into a timestamped release folder.
+    Move code from clone folder to timestamped `releases/` directory.
 
-    Creates a symlink named `current` pointing to the latest release.
-    Also links the `env` file into the release folder.
+    Also links `env` file and returns the path to the new release.
 
-    :param c: Fabric connection or context object.
+    :param c: Fabric runner or connection object.
+    :type c: Union[Connection, DockerRunner, Context]
+
     :param config: Site configuration dictionary.
-    :return: Full path to the release folder.
+    :type config: dict
+
+    :return: Absolute path to the new release directory.
+    :rtype: str
     """
     logger = get_logger(config["name"])
 
@@ -569,10 +600,13 @@ def symlink_release_to_current(
     config: dict
 ) -> None:
     """
-    Symlink the release to the current symlink.
+    Update the `current` symlink to point to the latest release.
 
-    :param c: Fabric connection or context object.
+    :param c: Fabric runner or connection object.
+    :type c: Union[Connection, DockerRunner, Context]
+
     :param config: Site configuration dictionary.
+    :type config: dict
     """
     logger = get_logger(config["name"])
     original_path = config["original_path"]
@@ -593,11 +627,16 @@ def cleanup_old_releases(
     keep: int = 5
 ) -> None:
     """
-    Delete older releases, keeping only the most recent `keep` ones.
+    Remove older release directories beyond a given retention count.
 
-    :param c: Fabric connection object.
+    :param c: Fabric runner or connection object.
+    :type c: Union[Connection, DockerRunner, Context]
+
     :param config: Site configuration dictionary.
-    :param keep: Number of most recent releases to keep.
+    :type config: dict
+
+    :param keep: Number of recent releases to keep (default: 5).
+    :type keep: int
     """
     logger = get_logger(config["name"])
 
@@ -626,13 +665,16 @@ def rollback_to_previous_release(
     config: dict
 ) -> None:
     """
-    Roll back the `current` symlink to the previous valid release.
+    Revert the `current` symlink to the previous release.
 
-    This function is called when a deployment fails to restore the
-    previous working state.
+    Deletes the failed release folder and restores the last known
+    working version.
 
-    :param c: Fabric connection or context object.
+    :param c: Fabric runner or connection object.
+    :type c: Union[Connection, DockerRunner, Context]
+
     :param config: Site configuration dictionary.
+    :type config: dict
     """
     logger = get_logger(config['name'])
 
@@ -679,15 +721,19 @@ def acquire_lock(
         config: dict
     ) -> str:
     """
-    Create a lock file to prevent concurrent deployments.
+    Create a `.deploy.lock` file to prevent concurrent deployments.
 
-    The lock file is named `.deploy.lock` and contains session metadata.
-    If the lock file already exists, an exception is raised.
+    Writes session metadata into the lock file. Aborts if already locked.
 
-    :param c: Fabric connection or context object.
+    :param c: Fabric runner or connection object.
+    :type c: Union[Connection, DockerRunner, Context]
+
     :param config: Site configuration dictionary.
-    :raises DeployerException: If a lock file is already present.
-    :return: A unique lock ID string.
+    :type config: dict
+
+    :raises DeployerException: If a lock is already present.
+    :return: Unique session lock ID.
+    :rtype: str
     """
     logger = get_logger(config['name'])
 
@@ -752,15 +798,21 @@ def release_lock(
     force: bool = False
 ) -> None:
     """
-    Remove the deployment lock file, if this session owns it.
+    Remove the `.deploy.lock` file if owned by this session.
 
-    If `force` is True, the lock file will be removed regardless
-    of the lock_id.
+    If `force` is enabled, the lock is removed regardless of ownership.
 
-    :param c: Fabric connection or context object.
+    :param c: Fabric runner or connection object.
+    :type c: Union[Connection, DockerRunner, Context]
+
     :param config: Site configuration dictionary.
-    :param lock_id: The lock ID associated with this session (optional).
-    :param force: Force deletion of lock file, ignoring ownership check.
+    :type config: dict
+
+    :param lock_id: Lock ID from the current session (optional).
+    :type lock_id: str
+
+    :param force: Force unlock, bypassing ID validation.
+    :type force: bool
     """
     logger = get_logger(config['name'])
     deploy_path = config['deploy_path']

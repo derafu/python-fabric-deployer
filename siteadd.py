@@ -16,9 +16,13 @@ SITES_FILE = Path(__file__).resolve().parent / "sites.yml"
 
 def load_sites():
     """
-    Load site configurations from the YAML file.
+    Load all site configurations from the YAML file.
 
-    :return: Dictionary containing all site configurations.
+    If the configuration file does not exist, an empty dictionary
+    is returned. Otherwise, parses and returns the YAML contents.
+
+    :return: Dictionary mapping site domains to their configurations.
+    :rtype: dict
     """
     # Return an empty dictionary if the file doesn't exist
     if not SITES_FILE.exists():
@@ -30,9 +34,13 @@ def load_sites():
 
 def save_sites(sites):
     """
-    Save the updated site configurations to the YAML file.
+    Save all site configurations to the YAML file.
 
-    :param sites: Dictionary of all site configurations.
+    Overwrites the existing file content with the provided dictionary.
+    Preserves key order and disables flow-style formatting for readability.
+
+    :param sites: Dictionary containing all site configurations.
+    :type sites: dict
     """
     # Open the YAML file in write mode and dump contents
     with open(SITES_FILE, "w") as f:
@@ -45,10 +53,18 @@ def save_sites(sites):
 
 def add_site(domain, repo_url):
     """
-    Add a new site entry to the sites configuration file.
+    Add a new site configuration entry to the YAML file.
 
-    :param domain: Domain name of the new site (e.g., www.example.com).
-    :param repo_url: Git repository URL for the site.
+    Creates a new site entry based on the domain and repository URL.
+    Sets sensible defaults for deployment path, branch, runner, and
+    virtual environment folder. Prevents overwriting existing sites.
+
+    :param domain: Full domain name of the new site
+                (e.g., ``www.example.com``).
+    :type domain: str
+
+    :param repo_url: Git repository URL for the new site.
+    :type repo_url: str
     """
     # Load existing configurations
     sites = load_sites()

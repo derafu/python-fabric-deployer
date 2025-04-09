@@ -18,9 +18,13 @@ SITES_FILE = Path(__file__).resolve().parent.parent / "sites.yml"
 
 def load_sites() -> dict:
     """
-    Load the sites configuration from the YAML file.
+    Load the sites configuration from a YAML file.
 
-    :return: A dictionary of site configurations.
+    Parses the YAML configuration defined in the constant ``SITES_FILE``
+    and returns a dictionary with deployment data for each site.
+
+    :return: Dictionary containing all configured sites.
+    :rtype: dict
     """
     # Open and parse the YAML file, returning a dictionary
     with open(SITES_FILE) as f:
@@ -28,9 +32,13 @@ def load_sites() -> dict:
 
 def print_site_list() -> None:
     """
-    Log all configured sites and their repository URLs.
+    Print a list of configured sites and their repository URLs.
 
-    :return: None
+    Loads the site configurations from the YAML file and logs each
+    site's name along with its associated Git repository URL.
+
+    :return: This function returns nothing.
+    :rtype: None
     """
     # Load site configurations from the YAML file
     sites = load_sites()

@@ -33,21 +33,42 @@ from fabricator.runners import DockerRunner
 
 def deploy_site(c: Connection | DockerRunner | Context, config: dict) -> None:
     """
-    Deploy a Python project using runner (local, docker, or ssh).
+    Deploy a Python web project using local, Docker, or SSH context.
 
-    This function orchestrates the full deployment pipeline:
-    - Acquires a deployment lock to prevent concurrent deploys.
-    - Verifies remote directory structure.
-    - Creates a compressed backup of the current version.
-    - Clones the repository and creates a timestamped release folder.
-    - Updates the `current` symlink to the new release.
-    - Symlinks shared files and writable folders.
-    - Installs dependencies, runs migrations, collectstatic, restarts services.
-    - Performs automatic rollback in case of failure.
-    - Releases the lock regardless of success or failure.
+    This function executes the full deployment pipeline for a Django or
+    Python-based project. It handles preparation, code updates, shared
+    resources, virtualenv management, database migrations, static files,
+    and service restarts. It also ensures safety through locking and
+    rollback mechanisms.
 
-    :param c: Fabric connection or context object (local, ssh, or Docker).
-    :param config: Site configuration dictionary loaded from sites.yml.
+    Deployment steps include:
+
+    1. Acquiring a lock to prevent concurrent deployments.
+    2. Verifying and preparing the remote directory structure.
+    3. Creating a compressed backup of the current version.
+    4. Cloning the repository into a new timestamped release folder.
+    5. Cleaning up old releases beyond `max_releases`.
+    6. Linking shared files and directories to the new release.
+    7. Setting permissions on writable directories.
+    8. Installing dependencies in a virtual environment.
+    9. Running Django database migrations.
+    10. Running Django `collectstatic`.
+    11. Updating the `current` symlink to point to the new release.
+    12. Restarting services like Gunicorn to apply changes.
+    13. Rolling back to the previous release if a failure occurs.
+    14. Releasing the deployment lock at the end.
+
+    :param c: The Fabric context or connection object. Can be a local
+            `Context`, remote `Connection`, or `DockerRunner`.
+    :type c: Union[Connection, DockerRunner, Context]
+
+    :param config: Dictionary with all deployment-related settings loaded
+                from `sites.yml`, including project name, paths, shared
+                files, and service settings.
+    :type config: dict
+
+    :raises DeployerException: If any step in the process fails.
+    :rtype: None
     """
     # Initialize logger for this site
     logger = get_logger(config['name'])
