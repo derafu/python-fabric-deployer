@@ -79,7 +79,7 @@ def deploy_site(c: Connection | DockerRunner | Context, config: dict) -> None:
     logger.info(msg)
     lock_id = None
     release_path = None
-
+    original_path = None
     try:
         # Step 0: Acquire lock to prevent concurrent deployments
         lock_id = acquire_lock(c, config)
@@ -142,5 +142,7 @@ def deploy_site(c: Connection | DockerRunner | Context, config: dict) -> None:
     finally:
         # Always release the lock regardless of success or failure
         if lock_id:
-            config["deploy_path"] = original_path
+            config["deploy_path"] = original_path if (
+                original_path
+            ) else config["deploy_path"]
             release_lock(c, config, lock_id)
