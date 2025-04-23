@@ -4,31 +4,31 @@
 
 # Case 1: Simple local deploy
 # Description: Executes a deploy in a local environment.
-# Command: fab2 deploy --site=www.localtest.cl
+# Command: fab2 deploy --site=app.localtest.cl
 # Tested: Yes
-www.localtest.cl:
+app.localtest.cl:
   repository: git@github.com:ejemplo/localtest.git
-  deploy_path: /var/www/sites/www.localtest.cl
+  deploy_path: /var/www/sites/app.localtest.cl
   branch: main
   # runner: local (optional, defaults to local)
 
 # Case 2: Local deploy with custom virtualenv
 # Description: Uses a custom directory name for the virtual environment.
-# Command: fab2 deploy --site=www.venvpersonalizado.cl
+# Command: fab2 deploy --site=app.venvpersonalizado.cl
 # Tested: Yes
-www.venvpersonalizado.cl:
+app.venvpersonalizado.cl:
   repository: git@github.com:ejemplo/venvtest.git
-  deploy_path: /var/www/sites/www.venvpersonalizado.cl
+  deploy_path: /var/www/sites/app.venvpersonalizado.cl
   venv: custom_env
   branch: main
 
 # Case 3: Local deploy with shared files
 # Description: Uses shared files and directories for persistence.
-# Command: fab2 deploy --site=www.sharedlocal.cl
+# Command: fab2 deploy --site=app.sharedlocal.cl
 # Tested: Yes
-www.sharedlocal.cl:
+app.sharedlocal.cl:
   repository: git@github.com:ejemplo/shared.git
-  deploy_path: /var/www/sites/www.sharedlocal.cl
+  deploy_path: /var/www/sites/app.sharedlocal.cl
   branch: main
   shared_files:
     - .env
@@ -42,30 +42,30 @@ www.sharedlocal.cl:
 
 # Case 4: Remote deploy using -H
 # Description: Deploy on remote server using -H flag.
-# Command: fab2 -H user@1.2.3.4 deploy --site=www.remoteserver.cl
+# Command: fab2 -H user@1.2.3.4 deploy --site=app.remoteserver.cl
 # Tested: No
-www.remoteserver.cl:
+app.remoteserver.cl:
   repository: git@github.com:ejemplo/remoteserver.git
-  deploy_path: /var/www/sites/www.remoteserver.cl
+  deploy_path: /var/www/sites/app.remoteserver.cl
   branch: main
 
 # Case 5: Remote deploy with host defined in config
 # Description: Uses `host` field inside the config YAML.
-# Command: fab2 deploy --site=www.sshconfig.cl
+# Command: fab2 deploy --site=app.sshconfig.cl
 # Tested: No
-www.sshconfig.cl:
+app.sshconfig.cl:
   host: user@1.2.3.4
   repository: git@github.com:ejemplo/sshconfig.git
-  deploy_path: /var/www/sites/www.sshconfig.cl
+  deploy_path: /var/www/sites/app.sshconfig.cl
   branch: main
 
 # Case 6: Remote with shared files and directories
 # Description: Uses shared_files and shared_dirs on a remote server.
-# Command: fab2 -H user@1.2.3.4 deploy --site=www.sharedremote.cl
+# Command: fab2 -H user@1.2.3.4 deploy --site=app.sharedremote.cl
 # Tested: No
-www.sharedremote.cl:
+app.sharedremote.cl:
   repository: git@github.com:ejemplo/sharedremote.git
-  deploy_path: /var/www/sites/www.sharedremote.cl
+  deploy_path: /var/www/sites/app.sharedremote.cl
   branch: main
   shared_files:
     - .env
@@ -79,11 +79,11 @@ www.sharedremote.cl:
 
 # Case 7: Deploy inside Docker container
 # Description: Deploys the site inside a local Docker container.
-# Command: fab2 deploy --site=www.dockertest.cl
+# Command: fab2 deploy --site=app.dockertest.cl
 # Tested: Yes
-www.dockertest.cl:
+app.dockertest.cl:
   repository: git@github.com:ejemplo/docker.git
-  deploy_path: /var/www/sites/www.dockertest.cl
+  deploy_path: /var/www/sites/app.dockertest.cl
   branch: main
   runner: docker
   docker_container: derafu-sites-server-python-caddy
@@ -91,11 +91,11 @@ www.dockertest.cl:
 
 # Case 8: Docker deploy with custom venv
 # Description: Uses a custom virtualenv path and enables Gunicorn logging.
-# Command: fab2 deploy --site=www.dockervenv.cl
+# Command: fab2 deploy --site=app.dockervenv.cl
 # Tested: Yes
-www.dockervenv.cl:
+app.dockervenv.cl:
   repository: git@github.com:ejemplo/dockervenv.git
-  deploy_path: /var/www/sites/www.dockervenv.cl
+  deploy_path: /var/www/sites/app.dockervenv.cl
   branch: main
   venv: .venv
   runner: docker
@@ -108,11 +108,11 @@ www.dockervenv.cl:
 
 # Case 9: Docker deploy on remote server
 # Description: Executes the deploy inside a Docker container remotely.
-# Command: fab2 -H user@host deploy --site=www.remotedockertest.cl
+# Command: fab2 -H user@host deploy --site=app.remotedockertest.cl
 # Tested: No
-www.remotedockertest.cl:
+app.remotedockertest.cl:
   repository: git@github.com:ejemplo/docker.git
-  deploy_path: /var/www/sites/www.remotedockertest.cl
+  deploy_path: /var/www/sites/app.remotedockertest.cl
   branch: main
   runner: docker
   docker_container: derafu-sites-server-python-caddy
@@ -120,11 +120,11 @@ www.remotedockertest.cl:
 
 # Case 10: Remote Docker with custom venv
 # Description: Docker deploy with custom venv path on a remote server.
-# Command: fab2 -H user@host deploy --site=www.remotedockervenv.cl
+# Command: fab2 -H user@host deploy --site=app.remotedockervenv.cl
 # Tested: No
-www.remotedockervenv.cl:
+app.remotedockervenv.cl:
   repository: git@github.com:ejemplo/dockervenv.git
-  deploy_path: /var/www/sites/www.remotedockervenv.cl
+  deploy_path: /var/www/sites/app.remotedockervenv.cl
   branch: main
   venv: .venv
   runner: docker
@@ -133,12 +133,12 @@ www.remotedockervenv.cl:
 
 # Case 11: Remote Docker with host in config
 # Description: Runs Docker deploy remotely using host from the config file.
-# Command: fab2 deploy --site=www.remotedockerhost.cl
+# Command: fab2 deploy --site=app.remotedockerhost.cl
 # Tested: No
-www.remotedockerhost.cl:
+app.remotedockerhost.cl:
   host: user@remote.server.com
   repository: git@github.com:ejemplo/docker.git
-  deploy_path: /var/www/sites/www.remotedockerhost.cl
+  deploy_path: /var/www/sites/app.remotedockerhost.cl
   branch: main
   runner: docker
   docker_container: derafu-sites-server-python-caddy
@@ -151,11 +151,11 @@ www.remotedockerhost.cl:
 # Case 12: Docker with custom project subdirectory
 # Description: wsgi.py is located in a subfolder with a custom name (not domain).
 #              The deploy script auto-detects the folder and uses it for Gunicorn.
-# Command: fab2 deploy --site=www.customproject.cl
+# Command: fab2 deploy --site=app.customproject.cl
 # Tested: Yes
-www.customproject.cl:
+app.customproject.cl:
   repository: git@github.com:ejemplo/customproject.git
-  deploy_path: /var/www/sites/www.customproject.cl
+  deploy_path: /var/www/sites/app.customproject.cl
   branch: main
   runner: docker
   docker_container: derafu-sites-server-python-caddy
@@ -167,11 +167,11 @@ www.customproject.cl:
 
 # Case 13: Writable directories configuration
 # Description: Defines folders that must be writable after deploy.
-# Command: fab2 deploy --site=www.writeable.cl
+# Command: fab2 deploy --site=app.writeable.cl
 # Tested: Yes
-www.writeable.cl:
+app.writeable.cl:
   repository: git@github.com:ejemplo/writeable.git
-  deploy_path: /var/www/sites/www.writeable.cl
+  deploy_path: /var/www/sites/app.writeable.cl
   branch: main
   writable_dirs:
     - media
@@ -187,11 +187,11 @@ www.writeable.cl:
 # Case 16: Deploy with automatic backups
 # Description: Creates a compressed backup before each deploy and retains only a limited number of backup files.
 #              This is useful for rollback or auditing purposes.
-# Command: fab2 deploy --site=www.examplebackup.cl
+# Command: fab2 deploy --site=app.examplebackup.cl
 # Status: Yes
-www.examplebackup.cl:
+app.examplebackup.cl:
   repository: git@github.com:example/example.git
-  deploy_path: /var/www/sites/www.examplebackup.cl
+  deploy_path: /var/www/sites/app.examplebackup.cl
   branch: main
   venv: .venv                            # Optional: custom virtual environment folder
   runner: docker                         # Optional: "local", "ssh", or "docker" (default is "local")
@@ -208,11 +208,11 @@ www.examplebackup.cl:
 # Description: Each deploy is stored in its own timestamped folder under releases/.
 #              A symlink named 'current' is updated to point to the latest release.
 #              Only a limited number of releases are kept to save disk space.
-# Command: fab2 deploy --site=www.examplereleases.cl
+# Command: fab2 deploy --site=app.examplereleases.cl
 # Status: Yes
-www.examplereleases.cl:
+app.examplereleases.cl:
   repository: git@github.com:example/example.git
-  deploy_path: /var/www/sites/www.examplereleases.cl
+  deploy_path: /var/www/sites/app.examplereleases.cl
   branch: main
   runner: local                          # Optional: "local", "ssh", or "docker" (default is "local")
   max_releases: 3                        # Optional: number of releases to keep in releases/

@@ -85,17 +85,17 @@ The main configuration is stored in `fabricator/sites.yml`, based on `sites-dist
 
 Edit the sites.yml file located in the fabricator/ directory to configure your websites.
 
-Each key represents a domain name (e.g., www.example.com). The value can be:
+Each key represents a domain name (e.g., app.example.com). The value can be:
 
 - A dictionary with detailed configuration options.
 
 Example:
 
 ```yaml
-www.example.com:
+app.example.com:
   repository: git@github.com:example/example.git
   branch: master
-  deploy_path: /var/www/sites/www.example.com
+  deploy_path: /var/www/sites/app.example.com
   venv: .venv
   runner: docker
   docker_container: my-container
@@ -112,7 +112,7 @@ www.example.com:
 For simple configurations you can use:
 
 ```shell
-./siteadd.py www.example.com git@github.com:example/example.git
+./siteadd.py app.example.com git@github.com:example/example.git
 ```
 ---
 
@@ -153,7 +153,7 @@ fab2 list-sites
 Default runner is `local`, so this will deploy locally:
 
 ```bash
-fab2 deploy --site=www.example.com
+fab2 deploy --site=app.example.com
 ```
 
 ---
@@ -163,13 +163,13 @@ fab2 deploy --site=www.example.com
 Specify the site which has `"runner: docker"` in `sites.yml`:
 
 ```bash
-fab2 deploy --site=www.example.com
+fab2 deploy --site=app.example.com
 ```
 
 You can also define the Docker container and user in the site config:
 
 ```yaml
-www.example.com:
+app.example.com:
   runner: docker
   docker_container: my-container
   docker_user: admin
@@ -182,7 +182,7 @@ www.example.com:
 When `"runner: ssh"` is configured in `sites.yml`, the deploy will be done over SSH:
 
 ```yaml
-www.example.com:
+app.example.com:
   runner: ssh
   host: 192.168.1.99
   user: deployer
@@ -191,13 +191,13 @@ www.example.com:
 You can override the SSH connection with environment variables:
 
 ```bash
-DEPLOYER_HOST=192.168.1.99 fab2 deploy --site=www.example.com
+DEPLOYER_HOST=192.168.1.99 fab2 deploy --site=app.example.com
 ```
 
 Or also set user and port:
 
 ```bash
-DEPLOYER_HOST=192.168.1.99 DEPLOYER_USER=admin DEPLOYER_PORT=22 fab2 deploy --site=www.example.com
+DEPLOYER_HOST=192.168.1.99 DEPLOYER_USER=admin DEPLOYER_PORT=22 fab2 deploy --site=app.example.com
 ```
 
 ---
@@ -233,7 +233,7 @@ If a deployment fails during a critical step (like migrations), the system will 
 You can manually revert to the last successful release at any time using:
 
 ```bash
-fab2 rollback --site=www.example.com
+fab2 rollback --site=app.example.com
 ```
 
 This will:
@@ -253,7 +253,7 @@ fab2 rollback-all
 If a deployment was interrupted and the `.deploy.lock` file wasn't removed:
 
 ```bash
-fab2 unlock --site=www.example.com
+fab2 unlock --site=app.example.com
 ```
 
 This forcibly removes the lock file and allows future deploys.

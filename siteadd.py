@@ -60,7 +60,7 @@ def add_site(domain, repo_url):
     virtual environment folder. Prevents overwriting existing sites.
 
     :param domain: Full domain name of the new site
-                (e.g., ``www.example.com``).
+                (e.g., ``app.example.com``).
     :type domain: str
 
     :param repo_url: Git repository URL for the new site.
@@ -94,7 +94,7 @@ if __name__ == "__main__":
     # Ensure exactly two arguments are passed (domain and repo)
     LIMIT_ARGS = 2
     if len(sys.argv) != LIMIT_ARGS:
-        print("Usage: ./siteadd.py \"www.example.com\" "
+        print("Usage: ./siteadd.py \"app.example.com\" "
               "\"git@github.com:example/www.example.com.git\"")
         sys.exit(1)
 
