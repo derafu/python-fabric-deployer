@@ -416,20 +416,55 @@ def restart_services(
     logger.info(f"Found wsgi.py in {wsgi_path}, project: {project_name}")
     logger.info(f"Running Gunicorn for {project_name} in background...")
 
-    # Command to launch Gunicorn in background, disowned
-    cmd = (
-        f"bash -c 'cd {project_dir} && "
-        f"export PYTHONPATH={current_path} && "
-        f"{gunicorn_bin} --workers=3 "
-        f"--bind=unix:{socket_path} "
-        f"{project_name}.wsgi:application "
-        f"--access-logfile {access_log} "
-        f"--error-logfile {error_log} "
-        f"--log-level=info &' disown"
+    # Kill previous Gunicorn processes for this site
+    kill_cmd = (
+        f"ps -eo pid,cmd | grep gunicorn | grep '{socket_path}' "
+        f"| awk '{{print $1}}' | xargs -r kill"
     )
+    logger.info(f"Stopping previous Gunicorn processes for {site}...")
+    c.run(kill_cmd, warn=True)
 
-    # Execute the command
+    # Generate a unique name for the script
+    script_name = f"/tmp/start_gunicorn_{uuid.uuid4().hex}.sh"
+
+    # Content of the script to start Gunicorn
+    script_content = f"""#!/bin/bash
+        cd {project_dir}
+        export PYTHONPATH={current_path}
+        {gunicorn_bin} --workers=3 \\
+        --bind=unix:{socket_path} \\
+        {project_name}.wsgi:application \\
+        --access-logfile {access_log} \\
+        --error-logfile {error_log} \\
+        --log-level=info
+        """
+
+    # Create the script on the remote server
+    c.run(f"cat > {script_name} << 'EOL'\n{script_content}\nEOL", hide=True)
+    c.run(f"chmod +x {script_name}", hide=True)
+
+    # Execute the script with nohup and in background
+    cmd = f"nohup {script_name} >/dev/null 2>&1 </dev/null & sleep 1"
     c.run(cmd, pty=False)
+
+    # Delete the script after using it (optional, executed in background)
+    c.run(f"(sleep 5 && rm -f {script_name} &)", pty=False)
+
+    logger.info(f"Gunicorn process for {site} has been launched")
+
+    # Optionally, verify if the process is running
+    check_cmd = (
+        f"ps -eo pid,cmd | grep gunicorn | "
+        f"grep '{socket_path}' | grep -v grep"
+    )
+    result = c.run(check_cmd, warn=True, hide=True)
+    if result and not result.failed and result.stdout.strip():
+        logger.info(f"Verified Gunicorn is running for {site}")
+    else:
+        logger.warning(
+            f"Could not verify if Gunicorn started for {site}. "
+            "Check logs manually."
+        )
 
 def set_writable_dirs(
         c: Connection | DockerRunner | Context,
