@@ -381,7 +381,7 @@ def restart_services(
     site = config['name']
 
     # Define paths
-    base_path = config['deploy_path']
+    base_path = config['original_path']
     current_path = f"{base_path}/current"
     venv_path = config.get("venv", "venv")
 
