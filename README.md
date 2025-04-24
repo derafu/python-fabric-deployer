@@ -77,7 +77,7 @@ pip install -r requirements.txt
 
 ## Configuration
 
-The main configuration is stored in `fabricator/sites.yml`, based on `sites-dist.yml`. Each key represents a site.
+The main configuration is stored in `sites.yml`, based on `sites-dist.yml`. Each key represents a site.
 
 ---
 

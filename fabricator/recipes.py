@@ -290,11 +290,11 @@ def migrate(c: Connection | DockerRunner | Context, config: dict) -> None:
     try:
         # Execute real migration command
         c.run(
-            f"bash -c 'source {deploy_path}/{venv_path}/bin/activate && "
-            f"cd {deploy_path} && python manage.py migrate "
-            f"> /dev/null 2>&1'",
+            f"source {deploy_path}/{venv_path}/bin/activate && "
+            f"cd {deploy_path} && python manage.py migrate",
             pty=True
         )
+
     except DeployerException as e:
         # Handle any exception during migration
         logger.error("Migration execution failed.")
@@ -397,14 +397,14 @@ def restart_services(
 
     # Attempt to locate wsgi.py file
     result = c.run(
-        f"find {current_path} -maxdepth 2 -name wsgi.py | head -n 1",
+        f"find {current_path}/ -maxdepth 2 -name wsgi.py | head -n 1",
         hide=True,
         warn=True,
     )
 
     # Abort if wsgi.py not found or if result is None
     if not result or result.failed or not result.stdout.strip():
-        logger.error("Could not find wsgi.py file.")
+        logger.error(f"Could not find wsgi.py file in {current_path}/")
         return
 
     # Extract wsgi path and project name
