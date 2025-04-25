@@ -561,10 +561,16 @@ def create_backup(
     # Delete older backups if exceeding max_backups
     try:
         result = c.run(f"ls -1t {backup_path}/{site_name}_*.tar.gz",
-                       hide=True, warn=True)
+                      hide=True, warn=True)
+
+        # Initialize files as an empty list by default
+        files = []
+
+        # Only assign to files if there are results
         if result and result.stdout:
             files = result.stdout.strip().splitlines()
 
+        # Now we can safely verify len(files)
         if len(files) > max_backups:
             old_files = files[max_backups:]
             for file in old_files:
@@ -821,7 +827,7 @@ def acquire_lock(
     c.sudo(f"chmod 664 {lock_file}")
 
     # Write lock file to remote system
-    c.run(f"printf '{content}' | sudo tee {lock_file} > /dev/null")
+    c.run(f"sudo bash -c \"echo '{content}' > {lock_file}\"")
     logger.info("Deployment lock acquired.")
 
     return lock_id
