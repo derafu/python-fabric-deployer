@@ -16,7 +16,11 @@ from invoke.context import Context
 
 from fabricator.deploy import deploy_site
 from fabricator.logger import get_logger
-from fabricator.recipes import release_lock, rollback_to_previous_release
+from fabricator.recipes import (
+    release_lock,
+    restart_services,
+    rollback_to_previous_release,
+)
 from fabricator.runners import DockerRunner
 from fabricator.utils import load_sites, print_site_list
 
@@ -271,6 +275,63 @@ def unlock_all(c: Connection | DockerRunner | Context) -> None:
         logger.info(f"Unlocking site: {site}")
         release_lock(c, config, force=True)
 
+@task(help={"site": "Name of the site to restart"})
+def restart_site(c: Connection | DockerRunner | Context, site: str) -> None:
+    """
+    Restart a single site defined in the configuration file.
+
+    Loads site-specific configuration, resolves the proper connection
+    (local, Docker, or SSH), and runs the full deployment process.
+
+    :param c: Fabric connection or context object.
+    :type c: Union[Connection, DockerRunner, Context]
+
+    :param site: Name of the site as defined in ``sites.yml``.
+    :type site: str
+    """
+    # Load all site definitions from the YAML config
+    sites = load_sites()
+
+    # Initialize logger for the given site
+    logger = get_logger(site)
+
+    # Abort if the requested site does not exist in config
+    if site not in sites:
+        logger.error(f"Site '{site}' not found in sites.yml")
+        return
+
+    # Load config and set the site name explicitly
+    config = sites[site]
+    config['name'] = site
+
+    # Resolve connection using environment vars if present
+    c = get_connection(c, config = config)
+
+    restart_services(c, config)
+
+@task
+def restart_all(c: Connection | DockerRunner | Context) -> None:
+    """
+    Restart all sites listed in the configuration file.
+
+    Iterates through all entries in ``sites.yml`` and runs the
+    deployment pipeline for each one sequentially.
+
+    :param c: Fabric connection or context object.
+    :type c: Union[Connection, DockerRunner, Context]
+    """
+    # Load all site definitions
+    sites = load_sites()
+
+    # Deploy each site iteratively
+    for site, config in sites.items():
+        config['name'] = site
+        # Use remote connection if available from environment
+        c = get_connection(c, config = config)
+        logger = get_logger(site)
+        logger.info(f"Restarting site: {site}")
+        restart_services(c, config)
+
 # This line exposes the tasks to the Fabric CLI (`fab2 ...`)
 ns = Collection(
     deploy,
@@ -279,5 +340,7 @@ ns = Collection(
     rollback,
     rollback_all,
     unlock,
-    unlock_all
+    unlock_all,
+    restart_site,
+    restart_all
 )

@@ -357,8 +357,8 @@ def restart_services(
     """
     Start or restart Gunicorn for the project.
 
-    Looks for `wsgi.py`, then launches Gunicorn with the appropriate
-    socket and logging configuration, unless running locally.
+    Uses the bash script 'start_services.sh' to handle the restart process.
+    If the script doesn't exist, logs a warning and returns.
 
     :param c: Fabric runner or connection object.
     :type c: Union[Connection, DockerRunner, Context]
@@ -368,103 +368,50 @@ def restart_services(
     """
     logger = get_logger(config['name'])
 
-    # Determine if environment is local
-    is_local = not isinstance(c, Connection) or getattr(
-        c, "host", "localhost") in ("localhost", "127.0.0.1")
-
-    # Skip Gunicorn startup on local
-    if is_local:
-        logger.info("Skipping Gunicorn startup in local environment.")
-        return
-
     # Get site name from config
     site = config['name']
+    script_path = "/scripts/start_services.sh"
 
-    # Define paths
-    base_path = config['original_path']
-    current_path = f"{base_path}/current"
-    venv_path = config.get("venv", "venv")
-
-    # Path to Gunicorn executable
-    gunicorn_bin = f"{current_path}/{venv_path}/bin/gunicorn"
-
-    # Define Unix socket for Gunicorn
-    socket_path = f"/run/gunicorn/{site}.sock"
-
-    # Define log file paths
-    access_log = f"/var/log/gunicorn/{site}-access.log"
-    error_log = f"/var/log/gunicorn/{site}-error.log"
-
-    # Attempt to locate wsgi.py file
-    result = c.run(
-        f"find {current_path}/ -maxdepth 2 -name wsgi.py | head -n 1",
+    # Check if the script exists
+    check_script = c.run(
+        f"test -f {script_path} && echo 'exists' || echo 'not_found'",
         hide=True,
-        warn=True,
+        warn=True
     )
-
-    # Abort if wsgi.py not found or if result is None
-    if not result or result.failed or not result.stdout.strip():
-        logger.error(f"Could not find wsgi.py file in {current_path}/")
+    if check_script is None:
+        logger.warning(
+            f"Script {script_path} not found. Skipping service restart."
+        )
         return
 
-    # Extract wsgi path and project name
-    wsgi_path = result.stdout.strip()
-    project_dir = os.path.dirname(wsgi_path)
-    project_name = os.path.basename(project_dir)
+    script_exists = check_script.stdout.strip() == "exists"
 
-    # Log where wsgi.py was found
-    logger.info(f"Found wsgi.py in {wsgi_path}, project: {project_name}")
-    logger.info(f"Running Gunicorn for {project_name} in background...")
-
-    # Kill previous Gunicorn processes for this site
-    kill_cmd = (
-        f"ps -eo pid,cmd | grep gunicorn | grep '{socket_path}' "
-        f"| awk '{{print $1}}' | xargs -r kill"
-    )
-    logger.info(f"Stopping previous Gunicorn processes for {site}...")
-    c.run(kill_cmd, warn=True)
-
-    # Generate a unique name for the script
-    script_name = f"/tmp/start_gunicorn_{uuid.uuid4().hex}.sh"
-
-    # Content of the script to start Gunicorn
-    script_content = f"""#!/bin/bash
-        cd {project_dir}
-        export PYTHONPATH={current_path}
-        {gunicorn_bin} --workers=3 \\
-        --bind=unix:{socket_path} \\
-        {project_name}.wsgi:application \\
-        --access-logfile {access_log} \\
-        --error-logfile {error_log} \\
-        --log-level=info
-        """
-
-    # Create the script on the remote server
-    c.run(f"cat > {script_name} << 'EOL'\n{script_content}\nEOL", hide=True)
-    c.run(f"chmod +x {script_name}", hide=True)
-
-    # Execute the script with nohup and in background
-    cmd = f"nohup {script_name} >/dev/null 2>&1 </dev/null & sleep 1"
-    c.run(cmd, pty=False)
-
-    # Delete the script after using it (optional, executed in background)
-    c.run(f"(sleep 5 && rm -f {script_name} &)", pty=False)
-
-    logger.info(f"Gunicorn process for {site} has been launched")
-
-    # Optionally, verify if the process is running
-    check_cmd = (
-        f"ps -eo pid,cmd | grep gunicorn | "
-        f"grep '{socket_path}' | grep -v grep"
-    )
-    result = c.run(check_cmd, warn=True, hide=True)
-    if result and not result.failed and result.stdout.strip():
-        logger.info(f"Verified Gunicorn is running for {site}")
-    else:
+    if not script_exists:
         logger.warning(
-            f"Could not verify if Gunicorn started for {site}. "
-            "Check logs manually."
+            f"Script {script_path} not found. Skipping service restart."
         )
+        return
+
+    logger.info(f"Restarting services for {site} using bash script...")
+
+    # Determine if we should restart a specific site or all sites
+    if site and site != "all":
+        # Restart specific site
+        result = c.run(f"{script_path} {site}", warn=True)
+    else:
+        # Restart all sites
+        result = c.run(f"{script_path}", warn=True)
+
+    # Check if the command executed successfully
+    if result and not result.failed:
+        logger.info(f"Services for {site} restarted successfully")
+    else:
+        logger.error(f"Failed to restart services for {site}")
+        error_details = (
+            result.stderr if result and hasattr(result, 'stderr')
+            else 'Unknown error'
+        )
+        logger.error(f"Error details: {error_details}")
 
 def set_writable_dirs(
         c: Connection | DockerRunner | Context,
