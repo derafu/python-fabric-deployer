@@ -236,7 +236,7 @@ def install_deps(c: Connection | DockerRunner | Context, config: dict) -> None:
     logger.info("Installing Python dependencies...")
     c.run(
         f"bash -c 'source {venv_dir}/bin/activate && "
-        f"cd {deploy_path} && pip install -r requirements.txt > /dev/null'",
+        f"cd {deploy_path} && pip install -r requirements.txt'",
         pty=True
     )
 
@@ -350,15 +350,17 @@ def collect_static(
         pty=True
     )
 
+# ruff: noqa: PLR0912
 def restart_services(
         c: Connection | DockerRunner | Context,
         config: dict
     ) -> None:
     """
-    Start or restart Gunicorn for the project.
+    Start or restart Gunicorn and Celery workers for the project.
 
-    Uses the bash script 'start_services.sh' to handle the restart process.
-    If the script doesn't exist, logs a warning and returns.
+    Uses the bash scripts 'start_services.sh' and 'start_celery_workers.sh' to
+    handle the restart process.
+    If either script doesn't exist, logs a warning and continues.
 
     :param c: Fabric runner or connection object.
     :type c: Union[Connection, DockerRunner, Context]
@@ -370,48 +372,98 @@ def restart_services(
 
     # Get site name from config
     site = config['name']
-    script_path = "/scripts/start_services.sh"
 
-    # Check if the script exists
-    check_script = c.run(
-        f"test -f {script_path} && echo 'exists' || echo 'not_found'",
+    # Define script paths
+    gunicorn_script_path = "/scripts/start_services.sh"
+    celery_script_path = "/scripts/start_celery_workers.sh"
+
+    # First, restart Gunicorn services
+    # Check if the Gunicorn script exists
+    check_gunicorn_script = c.run(
+        f"test -f {gunicorn_script_path} && echo 'exists' || echo 'not_found'",
         hide=True,
         warn=True
     )
-    if check_script is None:
+    if check_gunicorn_script is None:
         logger.warning(
-            f"Script {script_path} not found. Skipping service restart."
+            f"Script {gunicorn_script_path} not found. "
+            f"Skipping Gunicorn restart."
         )
-        return
+    else:
+        gunicorn_script_exists = check_gunicorn_script.stdout.strip() == "exists"
 
-    script_exists = check_script.stdout.strip() == "exists"
+        if not gunicorn_script_exists:
+            logger.warning(
+                f"Script {gunicorn_script_path} not found. "
+                f"Skipping Gunicorn restart."
+            )
+        else:
+            logger.info(f"Restarting Gunicorn services for {site}...")
 
-    if not script_exists:
+            # Determine if we should restart a specific site or all sites
+            if site and site != "all":
+                # Restart specific site
+                result = c.run(f"{gunicorn_script_path} {site}", warn=True)
+            else:
+                # Restart all sites
+                result = c.run(f"{gunicorn_script_path}", warn=True)
+
+            # Check if the command executed successfully
+            if result and not result.failed:
+                logger.info(
+                    f"Gunicorn services for {site} restarted successfully"
+                )
+            else:
+                logger.error(f"Failed to restart Gunicorn services for {site}")
+                error_details = (
+                    result.stderr if result and hasattr(result, 'stderr')
+                    else 'Unknown error'
+                )
+                logger.error(f"Error details: {error_details}")
+
+    # Second, restart Celery workers
+    # Check if the Celery script exists
+    check_celery_script = c.run(
+        f"test -f {celery_script_path} && echo 'exists' || echo 'not_found'",
+        hide=True,
+        warn=True
+    )
+    if check_celery_script is None:
         logger.warning(
-            f"Script {script_path} not found. Skipping service restart."
+            f"Script {celery_script_path} not found. "
+            f"Skipping Celery workers restart."
         )
-        return
-
-    logger.info(f"Restarting services for {site} using bash script...")
-
-    # Determine if we should restart a specific site or all sites
-    if site and site != "all":
-        # Restart specific site
-        result = c.run(f"{script_path} {site}", warn=True)
     else:
-        # Restart all sites
-        result = c.run(f"{script_path}", warn=True)
+        celery_script_exists = check_celery_script.stdout.strip() == "exists"
 
-    # Check if the command executed successfully
-    if result and not result.failed:
-        logger.info(f"Services for {site} restarted successfully")
-    else:
-        logger.error(f"Failed to restart services for {site}")
-        error_details = (
-            result.stderr if result and hasattr(result, 'stderr')
-            else 'Unknown error'
-        )
-        logger.error(f"Error details: {error_details}")
+        if not celery_script_exists:
+            logger.warning(
+                f"Script {celery_script_path} not found. "
+                f"Skipping Celery workers restart."
+            )
+        else:
+            logger.info(f"Restarting Celery workers for {site}...")
+
+            # Determine if we should restart a specific site or all sites
+            if site and site != "all":
+                # Restart specific site
+                result = c.run(f"{celery_script_path} {site}", warn=True)
+            else:
+                # Restart all sites
+                result = c.run(f"{celery_script_path}", warn=True)
+
+            # Check if the command executed successfully
+            if result and not result.failed:
+                logger.info(
+                    f"Celery workers for {site} restarted successfully"
+                )
+            else:
+                logger.error(f"Failed to restart Celery workers for {site}")
+                error_details = (
+                    result.stderr if result and hasattr(result, 'stderr')
+                    else 'Unknown error'
+                )
+                logger.error(f"Error details: {error_details}")
 
 def set_writable_dirs(
         c: Connection | DockerRunner | Context,
