@@ -390,7 +390,9 @@ def restart_services(
             f"Skipping Gunicorn restart."
         )
     else:
-        gunicorn_script_exists = check_gunicorn_script.stdout.strip() == "exists"
+        gunicorn_script_exists = (
+            check_gunicorn_script.stdout.strip() == "exists"
+        )
 
         if not gunicorn_script_exists:
             logger.warning(
