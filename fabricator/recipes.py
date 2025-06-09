@@ -358,8 +358,8 @@ def restart_services(
     """
     Start or restart Gunicorn and Celery workers for the project.
 
-    Uses the bash scripts 'start_services.sh' and 'start_celery_workers.sh' to
-    handle the restart process.
+    Uses the bash scripts 'start_gunicorn_supervisord.sh' and
+    'start_celery_supervisord.sh' to handle the restart process.
     If either script doesn't exist, logs a warning and continues.
 
     :param c: Fabric runner or connection object.
@@ -374,8 +374,8 @@ def restart_services(
     site = config['name']
 
     # Define script paths
-    gunicorn_script_path = "/scripts/start_services.sh"
-    celery_script_path = "/scripts/start_celery_workers.sh"
+    gunicorn_script_path = "/scripts/start_gunicorn_supervisord.sh"
+    celery_script_path = "/scripts/start_celery_supervisord.sh"
 
     # First, restart Gunicorn services
     # Check if the Gunicorn script exists
