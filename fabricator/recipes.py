@@ -236,7 +236,8 @@ def install_deps(c: Connection | DockerRunner | Context, config: dict) -> None:
     logger.info("Installing Python dependencies...")
     c.run(
         f"bash -c 'source {venv_dir}/bin/activate && "
-        f"cd {deploy_path} && pip install -r requirements.txt'",
+        f"cd {deploy_path} && "
+        f"pip install --prefer-binary -r requirements.txt'",
         pty=True
     )
 
