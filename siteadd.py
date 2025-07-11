@@ -77,7 +77,7 @@ def add_site(domain, repo_url):
     # Build the basic config dictionary
     sites[domain] = {
         "repository": repo_url,
-        "deploy_path": f"/var/www/sites/{domain}",
+        "deploy_path": f"/srv/docker/python3.13-caddy/sites/{domain}",
         "branch": "main",
         "venv": "venv",
         "runner": "local"
