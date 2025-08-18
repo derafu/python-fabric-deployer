@@ -534,16 +534,35 @@ def create_backup(
 
     # If backup path is not defined, skip this step
     if not backup_path:
-        logger.warning("Skipping backup: 'backup_path' not defined in config.")
+        msg = "Skipping backup: 'backup_path' not defined in config."
+        logger.warning(msg)
         return
 
     # Build backup filename and path
     deploy_path = config["deploy_path"]
     site_name = config["name"]
     timestamp = datetime.now(UTC).strftime("%Y%m%d%H%M%S")
-    backup_file = os.path.join(backup_path, f"{site_name}_{timestamp}.tar.gz")
+    backup_file = os.path.join(
+        backup_path, f"{site_name}_{timestamp}.tar.gz"
+    )
 
-    logger.info(f"Creating backup for site '{site_name}' at {backup_file}")
+    # Check if current symlink exists (active deployment)
+    result = c.run(
+        f"test -L {deploy_path}/current && echo 'exists'",
+        hide=True, warn=True
+    )
+
+    if not result or not result.ok or result.stdout.strip() != 'exists':
+        msg = (
+            "Skipping backup: No active deployment found "
+            "(current symlink doesn't exist)."
+        )
+        logger.warning(msg)
+        return
+
+    logger.info(
+        f"Creating backup for site '{site_name}' at {backup_file}"
+    )
 
     # Ensure backup directory exists
     remote_user = c.run("whoami", hide=True)
@@ -554,16 +573,29 @@ def create_backup(
 
     # Create compressed backup using tar
     try:
-        c.run(f"tar -czf {backup_file} -C {deploy_path} .")
-        logger.info(f"Backup created: {backup_file}")
+        # Get the current release name
+        result = c.run(
+            f"basename $(readlink {deploy_path}/current)",
+            hide=True
+        )
+        release_name = result.stdout.strip() if result else ""
+
+        # Backup only the current release
+        c.run(
+            f"tar -czf {backup_file} -C {deploy_path}/releases "
+            f"{release_name}"
+        )
+        logger.info(f"Backup created for release: {release_name}")
     except DeployerException as e:
         logger.warning(f"Backup creation failed: {e}")
         return
 
     # Delete older backups if exceeding max_backups
     try:
-        result = c.run(f"ls -1t {backup_path}/{site_name}_*.tar.gz",
-                      hide=True, warn=True)
+        result = c.run(
+            f"ls -1t {backup_path}/{site_name}_*.tar.gz",
+            hide=True, warn=True
+        )
 
         # Initialize files as an empty list by default
         files = []
