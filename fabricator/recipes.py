@@ -241,14 +241,38 @@ def install_deps(c: Connection | DockerRunner | Context, config: dict) -> None:
         pty=True
     )
 
-    # Install Playwright browsers
-    logger.info("Installing Playwright browsers...")
-    c.run(
+    # Install Playwright browsers if playwright is installed
+    logger.info("Checking if Playwright is installed...")
+    playwright_check = c.run(
         f"bash -c 'source {venv_dir}/bin/activate && "
         f"cd {deploy_path} && "
-        f"playwright install'",
-        pty=True
+        f"python -c \"import playwright; print('playwright installed')\"'",
+        pty=True,
+        warn=True,
+        hide=True
     )
+
+    if playwright_check and playwright_check.ok:
+        logger.info("Installing Playwright browsers...")
+        c.run(
+            f"bash -c 'source {venv_dir}/bin/activate && "
+            f"cd {deploy_path} && "
+            f"playwright install'",
+            pty=True
+        )
+
+        logger.info("Installing Playwright system dependencies...")
+        c.run(
+            f"bash -c 'source {venv_dir}/bin/activate && "
+            f"cd {deploy_path} && "
+            f"playwright install-deps'",
+            pty=True
+        )
+    else:
+        logger.info(
+            "Playwright not found in requirements, "
+            "skipping browser installation."
+        )
 
 def migrate(c: Connection | DockerRunner | Context, config: dict) -> None:
     """
