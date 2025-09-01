@@ -241,12 +241,13 @@ def install_deps(c: Connection | DockerRunner | Context, config: dict) -> None:
         pty=True
     )
 
-    # Install Playwright browsers if scraper-apigateway is installed
-    logger.info("Checking if scraper-apigateway is installed...")
+    # Install Playwright browsers if apigateway_scraper is installed
+    logger.info("Checking if apigateway_scraper is installed...")
     scraper_check = c.run(
         f"bash -c 'source {venv_dir}/bin/activate && "
         f"cd {deploy_path} && "
-        f"python -c \"import scraper_apigateway; print('scraper-apigateway installed')\"'", # noqa: E501
+        f"python -c \"import apigateway_scraper; "
+        f"print(\\\"apigateway_scraper installed\\\")\"'",
         pty=True,
         warn=True,
         hide=True
@@ -270,7 +271,7 @@ def install_deps(c: Connection | DockerRunner | Context, config: dict) -> None:
         )
     else:
         logger.info(
-            "scraper-apigateway not found in requirements, "
+            "apigateway_scraper not found in requirements, "
             "skipping Playwright browser installation."
         )
 
