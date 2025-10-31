@@ -325,8 +325,8 @@ def migrate(c: Connection | DockerRunner | Context, config: dict) -> None:
     try:
         # Execute real migration command
         c.run(
-            f"source {deploy_path}/{venv_path}/bin/activate && "
-            f"cd {deploy_path} && python manage.py migrate",
+            f"bash -c 'source {deploy_path}/{venv_path}/bin/activate && "
+            f"cd {deploy_path} && python manage.py migrate'",
             pty=True
         )
 
@@ -337,19 +337,22 @@ def migrate(c: Connection | DockerRunner | Context, config: dict) -> None:
         raise DeployerException(msg_raise) from e
 
     logger.info("Running Django db_seed...")
-    try:
-        # Execute real migration command
-        c.run(
-            f"bash -c 'source {deploy_path}/{venv_path}/bin/activate && "
-            f"cd {deploy_path} && python manage.py db_seed "
-            f"> /dev/null 2>&1'",
-            pty=True
-        )
-    except DeployerException as e:
-        # Handle any exception during migration
-        logger.error("Seed execution failed.")
-        msg_raise = f"Seed error: {e!s}"
-        raise DeployerException(msg_raise) from e
+    # Execute db_seed command with visible output for debugging
+    result = c.run(
+        f"bash -c 'source {deploy_path}/{venv_path}/bin/activate && "
+        f"cd {deploy_path} && python manage.py db_seed'",
+        pty=True,
+        warn=True
+    )
+
+    # Check if db_seed failed
+    if result and result.failed:
+        logger.error("db_seed command failed.")
+        output = getattr(result, "stdout", "").strip()
+        if output:
+            logger.error(f"Error output:\n{output}")
+        msg_raise = "db_seed execution failed."
+        raise DeployerException(msg_raise)
 
 def collect_static(
         c: Connection | DockerRunner | Context,
@@ -391,11 +394,11 @@ def restart_services(
         config: dict
     ) -> None:
     """
-    Start or restart Gunicorn and Celery workers for the project.
+    Start or restart services for the project using Procfile configuration.
 
-    Uses the bash scripts 'start_gunicorn_supervisord.sh' and
-    'start_celery_supervisord.sh' to handle the restart process.
-    If either script doesn't exist, logs a warning and continues.
+    Uses the bash script 'start_procfile_supervisord.sh' to handle the
+    restart process.
+    If the script doesn't exist, logs a warning and continues.
 
     :param c: Fabric runner or connection object.
     :type c: Union[Connection, DockerRunner, Context]
@@ -408,94 +411,48 @@ def restart_services(
     # Get site name from config
     site = config['name']
 
-    # Define script paths
-    gunicorn_script_path = "/scripts/start_gunicorn_supervisord.sh"
-    celery_script_path = "/scripts/start_celery_supervisord.sh"
+    # Define script path
+    procfile_script_path = "/scripts/start_procfile_supervisord.sh"
 
-    # First, restart Gunicorn services
-    # Check if the Gunicorn script exists
-    check_gunicorn_script = c.run(
-        f"test -f {gunicorn_script_path} && echo 'exists' || echo 'not_found'",
+    # Check if the Procfile script exists
+    check_script = c.run(
+        f"test -f {procfile_script_path} && echo 'exists' || echo 'not_found'",
         hide=True,
         warn=True
     )
-    if check_gunicorn_script is None:
+    if check_script is None:
         logger.warning(
-            f"Script {gunicorn_script_path} not found. "
-            f"Skipping Gunicorn restart."
+            f"Script {procfile_script_path} not found. "
+            f"Skipping services restart."
         )
     else:
-        gunicorn_script_exists = (
-            check_gunicorn_script.stdout.strip() == "exists"
+        script_exists = (
+            check_script.stdout.strip() == "exists"
         )
 
-        if not gunicorn_script_exists:
+        if not script_exists:
             logger.warning(
-                f"Script {gunicorn_script_path} not found. "
-                f"Skipping Gunicorn restart."
+                f"Script {procfile_script_path} not found. "
+                f"Skipping services restart."
             )
         else:
-            logger.info(f"Restarting Gunicorn services for {site}...")
+            logger.info(f"Restarting services for {site}...")
 
             # Determine if we should restart a specific site or all sites
             if site and site != "all":
                 # Restart specific site
-                result = c.run(f"{gunicorn_script_path} {site}", warn=True)
+                result = c.run(f"{procfile_script_path} {site}", warn=True)
             else:
                 # Restart all sites
-                result = c.run(f"{gunicorn_script_path}", warn=True)
+                result = c.run(f"{procfile_script_path}", warn=True)
 
             # Check if the command executed successfully
             if result and not result.failed:
                 logger.info(
-                    f"Gunicorn services for {site} restarted successfully"
+                    f"Services for {site} restarted successfully"
                 )
             else:
-                logger.error(f"Failed to restart Gunicorn services for {site}")
-                error_details = (
-                    result.stderr if result and hasattr(result, 'stderr')
-                    else 'Unknown error'
-                )
-                logger.error(f"Error details: {error_details}")
-
-    # Second, restart Celery workers
-    # Check if the Celery script exists
-    check_celery_script = c.run(
-        f"test -f {celery_script_path} && echo 'exists' || echo 'not_found'",
-        hide=True,
-        warn=True
-    )
-    if check_celery_script is None:
-        logger.warning(
-            f"Script {celery_script_path} not found. "
-            f"Skipping Celery workers restart."
-        )
-    else:
-        celery_script_exists = check_celery_script.stdout.strip() == "exists"
-
-        if not celery_script_exists:
-            logger.warning(
-                f"Script {celery_script_path} not found. "
-                f"Skipping Celery workers restart."
-            )
-        else:
-            logger.info(f"Restarting Celery workers for {site}...")
-
-            # Determine if we should restart a specific site or all sites
-            if site and site != "all":
-                # Restart specific site
-                result = c.run(f"{celery_script_path} {site}", warn=True)
-            else:
-                # Restart all sites
-                result = c.run(f"{celery_script_path}", warn=True)
-
-            # Check if the command executed successfully
-            if result and not result.failed:
-                logger.info(
-                    f"Celery workers for {site} restarted successfully"
-                )
-            else:
-                logger.error(f"Failed to restart Celery workers for {site}")
+                logger.error(f"Failed to restart services for {site}")
                 error_details = (
                     result.stderr if result and hasattr(result, 'stderr')
                     else 'Unknown error'
@@ -594,6 +551,20 @@ def create_backup(
         logger.warning(msg)
         return
 
+    # Verify that the symlink points to a valid directory
+    target_check = c.run(
+        f"test -d {deploy_path}/current && echo 'valid'",
+        hide=True, warn=True
+    )
+
+    if (not target_check or not target_check.ok or
+            target_check.stdout.strip() != 'valid'):
+        msg = (
+            "Skipping backup: Current symlink points to invalid directory."
+        )
+        logger.warning(msg)
+        return
+
     logger.info(
         f"Creating backup for site '{site_name}' at {backup_file}"
     )
@@ -609,10 +580,18 @@ def create_backup(
     try:
         # Get the current release name
         result = c.run(
-            f"basename $(readlink {deploy_path}/current)",
-            hide=True
+            f"readlink {deploy_path}/current | xargs basename",
+            hide=True,
+            warn=True
         )
-        release_name = result.stdout.strip() if result else ""
+        release_name = result.stdout.strip() if result and result.ok else ""
+
+        if not release_name:
+            logger.warning(
+                "Could not determine current release name. "
+                "Skipping backup."
+            )
+            return
 
         # Backup only the current release
         c.run(
