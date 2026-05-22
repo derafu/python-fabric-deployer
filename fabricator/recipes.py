@@ -138,8 +138,11 @@ def shared_files(
     if not shared_files and not shared_dirs:
         return
 
-    # Define the shared base path and the current release path
-    shared_dir = os.path.join(config['deploy_path'], 'shared')
+    # Define the shared base path (persistent) and the current release path.
+    # original_path is the base deploy dir; deploy_path has been repointed to
+    # the new release folder by the time this function is called.
+    base_path = config.get('original_path', config['deploy_path'])
+    shared_dir = os.path.join(base_path, 'shared')
     release_dir = config['deploy_path']
 
     # Ensure the shared directory exists
@@ -191,8 +194,8 @@ def shared_files(
             remote_user = c.run("whoami", hide=True)
             if remote_user:
                 remote_user = remote_user.stdout.strip()
-                c.sudo(f"mkdir -p {shared_dir}", warn=True)
-                c.sudo(f"chown {remote_user}:{remote_user} {shared_dir}")
+                c.sudo(f"mkdir -p {shared_subdir}", warn=True)
+                c.sudo(f"chown {remote_user}:{remote_user} {shared_subdir}")
 
         # Create or update the symlink in the release directory
         c.run(f"ln -sfn {shared_subdir} {release_subdir}", warn=True)
@@ -672,11 +675,12 @@ def deploy_to_release_folder(
     # Move __clone_tmp__ into the final release folder
     c.sudo(f"mv {tmp_path} {release_path}", warn=True)
 
-    # Link the env file (used for secrets) into the new release
-    env_source = os.path.join(deploy_path, "env")
-    env_target = os.path.join(release_path, "env")
-    c.sudo(f"ln -sf {env_source} {env_target}", warn=True)
-    logger.info(f"env linked: {env_target} -> {env_source}")
+    # Link the env file only if not managed by shared_files
+    if "env" not in config.get("shared_files", []):
+        env_source = os.path.join(deploy_path, "env")
+        env_target = os.path.join(release_path, "env")
+        c.sudo(f"ln -sf {env_source} {env_target}", warn=True)
+        logger.info(f"env linked: {env_target} -> {env_source}")
 
     # Log release creation details
     logger.info(f"Release created at: {release_path}")
