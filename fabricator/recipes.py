@@ -91,6 +91,7 @@ def update_code(c: Connection | DockerRunner | Context, config: dict) -> None:
         f"find {deploy_path} -mindepth 1 -maxdepth 1 "
         f"! -name 'env' ! -name '__clone_tmp__' "
         f"! -name 'releases' ! -name 'current' ! -name '.deploy.lock' "
+        f"! -name 'shared' ! -name 'backup' "
         f"-exec rm -rf {{}} +",
         warn=True
     )
