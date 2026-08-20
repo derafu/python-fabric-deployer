@@ -258,21 +258,31 @@ def install_deps(c: Connection | DockerRunner | Context, config: dict) -> None:
     )
 
     if scraper_check and scraper_check.ok:
-        logger.info("Installing Playwright browsers...")
+        logger.info("Installing Playwright Chromium browser...")
         c.run(
             f"bash -c 'source {venv_dir}/bin/activate && "
             f"cd {deploy_path} && "
-            f"playwright install'",
+            f"PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=1 "
+            f"playwright install chromium'",
             pty=True
         )
 
+        # install-deps uses Ubuntu package names. On Debian Trixie
+        # (python:3.14) it fails; Chromium libs belong in the image.
+        # Do not abort the deploy if this step cannot run.
         logger.info("Installing Playwright system dependencies...")
-        c.run(
+        deps = c.run(
             f"bash -c 'source {venv_dir}/bin/activate && "
             f"cd {deploy_path} && "
-            f"playwright install-deps'",
-            pty=True
+            f"playwright install-deps chromium'",
+            pty=True,
+            warn=True,
         )
+        if deps is None or deps.failed:
+            logger.warning(
+                "playwright install-deps failed; continuing. "
+                "Ensure Chromium libraries are installed in the image."
+            )
     else:
         logger.info(
             "apigateway_scraper not found in requirements, "
