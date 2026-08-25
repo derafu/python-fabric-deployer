@@ -132,6 +132,36 @@ For simple configurations you can use:
 | `shared_files`   | No       | `[]`            | List of files to symlink after each deploy                 |
 | `shared_dirs`    | No       | `[]`            | List of directories to symlink after each deploy           |
 | `writable_dirs`  | No       | `[]`            | Directories to make writable (chmod 775, etc.)             |
+| `python_bin`     | No       | `python3`       | Interpreter used to create the virtualenv                   |
+| `system_site_packages` | No | `false`      | Create the virtualenv with `--system-site-packages`         |
+| `verify_imports` | No       | `[]`            | Modules that must import after installing dependencies      |
+
+### System packages (embedded PHP / phpy)
+
+A virtualenv is isolated from the interpreter of the system, so a
+package that cannot come from PyPI is invisible to the site. That is the
+case of `phpy`, which requires a PHP built with `--enable-embed` and is
+installed in the interpreter of the system: a site that uses
+`derafu-backbone-bridge` needs `system_site_packages: true` to reach it.
+
+```yaml
+app.example.com:
+  repository: git@github.com:example/example.git
+  deploy_path: /var/www/sites/app.example.com
+  python_bin: python3.14
+  system_site_packages: true
+  verify_imports:
+    - phpy
+    - derafu_backbone_bridge
+```
+
+An existing virtualenv keeps the configuration it was created with, so
+enabling the option on a site that was already deployed rewrites its
+`pyvenv.cfg` on the next deploy, without touching its packages.
+
+`verify_imports` runs right after `pip install`: a module that cannot be
+imported fails the deploy and rolls back, instead of leaving a site that
+only breaks when a request needs it.
 
 ---
 

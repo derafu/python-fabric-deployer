@@ -216,3 +216,28 @@ app.examplereleases.cl:
   branch: main
   runner: local                          # Optional: "local", "ssh", or "docker" (default is "local")
   max_releases: 3                        # Optional: number of releases to keep in releases/
+
+# ============================================
+# SECTION: System Packages (embedded PHP / phpy)
+# ============================================
+
+# Case 18: Deploy with access to the packages of the system
+# Description: The virtualenv is created with --system-site-packages, so the site can import packages
+#              that do not come from PyPI and live in the interpreter of the system, such as `phpy`
+#              (which needs a PHP built with --enable-embed, used by derafu-backbone-bridge).
+#              `python_bin` pins the interpreter, and `verify_imports` turns a module that is not
+#              reachable into a failed deploy instead of a failure in production.
+# Command: fab2 deploy --site=app.examplesystemsite.cl
+# Status: Yes
+app.examplesystemsite.cl:
+  repository: git@github.com:example/example.git
+  deploy_path: /var/www/sites/app.examplesystemsite.cl
+  branch: main
+  runner: docker                         # Optional: "local", "ssh", or "docker" (default is "local")
+  docker_container: python314-caddy      # Required if runner is docker
+  docker_user: admin                     # Optional
+  python_bin: python3.14                 # Optional: interpreter used to create the venv (default: python3)
+  system_site_packages: true             # Optional: create the venv with --system-site-packages (default: false)
+  verify_imports:                        # Optional: modules that must be importable after installing
+    - phpy
+    - derafu_backbone_bridge

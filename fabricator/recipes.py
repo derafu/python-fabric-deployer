@@ -202,12 +202,153 @@ def shared_files(
         c.run(f"ln -sfn {shared_subdir} {release_subdir}", warn=True)
         logger.info(f"Linked shared directory: {d}")
 
+def venv_sees_system_site_packages(
+        c: Connection | DockerRunner | Context,
+        venv_dir: str
+    ) -> bool:
+    """
+    Check whether a virtualenv can see the packages of the system.
+
+    The answer is written in `pyvenv.cfg` when the virtualenv is
+    created, and it is the only place where it lives.
+
+    :param c: Fabric runner or connection object.
+    :type c: Union[Connection, DockerRunner, Context]
+
+    :param venv_dir: Path of the virtualenv.
+    :type venv_dir: str
+
+    :return: True if the virtualenv sees the packages of the system.
+    :rtype: bool
+    """
+    result = c.run(
+        f"grep -qx 'include-system-site-packages = true' "
+        f"{venv_dir}/pyvenv.cfg",
+        warn=True,
+        hide=True
+    )
+
+    return result is not None and result.ok
+
+def ensure_venv(c: Connection | DockerRunner | Context, config: dict) -> None:
+    """
+    Create the virtual environment of the site if it is missing.
+
+    The interpreter is `python_bin`, so a site can pin the version it
+    needs instead of taking whatever `python3` happens to be.
+
+    With `system_site_packages` enabled the virtualenv is created with
+    `--system-site-packages`. Some packages cannot come from PyPI and
+    are installed in the interpreter of the system — `phpy`, which
+    needs a PHP built with `--enable-embed`, is one of them — and only
+    a virtualenv created that way can import them.
+
+    A virtualenv that already exists keeps the `pyvenv.cfg` it was
+    created with, so enabling the option later would change nothing.
+    Running `venv` again over the same folder rewrites that file and
+    leaves the packages already installed untouched.
+
+    :param c: Fabric runner or connection object.
+    :type c: Union[Connection, DockerRunner, Context]
+
+    :param config: Site configuration dictionary.
+    :type config: dict
+    """
+    logger = get_logger(config['name'])
+
+    venv_path = config.get("venv", "venv")
+    deploy_path = config["deploy_path"]
+    venv_dir = f"{deploy_path}/{venv_path}"
+    python_bin = config.get("python_bin", "python3")
+    system_site = bool(config.get("system_site_packages", False))
+    flags = " --system-site-packages" if system_site else ""
+
+    # Check if virtualenv exists
+    logger.info("Checking if virtualenv exists...")
+    result = c.run(f"test -d {venv_dir}", warn=True)
+    if result is None or result.failed:
+        logger.info(
+            f"Creating virtualenv at {venv_dir} with {python_bin}"
+        )
+        c.run(f"{python_bin} -m venv{flags} {venv_dir}")
+        return
+
+    # The virtualenv is there, but it may not be the one the config
+    # asks for: only its configuration is fixed, not its packages.
+    if not system_site or venv_sees_system_site_packages(c, venv_dir):
+        return
+
+    logger.info(
+        f"Virtualenv at {venv_dir} cannot see the packages of the "
+        f"system, updating its configuration..."
+    )
+    c.run(f"{python_bin} -m venv{flags} {venv_dir}")
+
+def verify_imports(
+        c: Connection | DockerRunner | Context,
+        config: dict
+    ) -> None:
+    """
+    Verify that the modules listed in `verify_imports` can be imported.
+
+    A dependency that does not come from `requirements.txt` — one
+    provided by the system and reached through `system_site_packages` —
+    leaves no trace in the install: everything succeeds and the site
+    only fails when a request needs the module, in production.
+    Importing it here turns that into a failed deploy, which rolls back
+    to the previous release.
+
+    :param c: Fabric runner or connection object.
+    :type c: Union[Connection, DockerRunner, Context]
+
+    :param config: Site configuration dictionary.
+    :type config: dict
+
+    :raises DeployerException: If a module cannot be imported.
+    """
+    logger = get_logger(config['name'])
+
+    modules = config.get("verify_imports") or []
+    if not modules:
+        return
+
+    venv_path = config.get("venv", "venv")
+    deploy_path = config["deploy_path"]
+    venv_dir = f"{deploy_path}/{venv_path}"
+
+    logger.info(f"Verifying imports: {', '.join(modules)}")
+
+    missing = []
+    for module in modules:
+        result = c.run(
+            f"bash -c 'source {venv_dir}/bin/activate && "
+            f"cd {deploy_path} && "
+            f"python -c \"import {module}\"'",
+            pty=True,
+            warn=True,
+            hide=True
+        )
+        if result is None or result.failed:
+            missing.append(module)
+
+    if missing:
+        msg_raise = (
+            f"Cannot import in the virtualenv: {', '.join(missing)}. "
+            f"Check 'requirements.txt' and, for the packages provided "
+            f"by the system, 'system_site_packages'."
+        )
+        logger.error(msg_raise)
+        raise DeployerException(msg_raise)
+
+    logger.info("All the modules of 'verify_imports' are available.")
+
 def install_deps(c: Connection | DockerRunner | Context, config: dict) -> None:
     """
     Install Python dependencies in a virtual environment.
 
-    Creates a `venv` folder if it does not exist and installs packages
-    from `requirements.txt` using pip.
+    Creates the virtualenv if it does not exist and installs packages
+    from `requirements.txt` using pip. Afterwards it verifies the
+    modules of `verify_imports`, if the site declares any.
 
     :param c: Fabric runner or connection object.
     :type c: Union[Connection, DockerRunner, Context]
@@ -222,12 +363,7 @@ def install_deps(c: Connection | DockerRunner | Context, config: dict) -> None:
     venv_dir = f"{deploy_path}/{venv_path}"
     requirements_file = f"{deploy_path}/requirements.txt"
 
-    # Check if virtualenv exists
-    logger.info("Checking if virtualenv exists...")
-    result = c.run(f"test -d {venv_dir}", warn=True)
-    if result is None or result.failed:
-        logger.info(f"Creating virtualenv at {venv_dir}")
-        c.run(f"python3 -m venv {venv_dir}")
+    ensure_venv(c, config)
 
     # Check for requirements.txt before installing
     result = c.run(f"test -f {requirements_file}", warn=True)
@@ -244,6 +380,8 @@ def install_deps(c: Connection | DockerRunner | Context, config: dict) -> None:
         f"pip install --prefer-binary -r requirements.txt'",
         pty=True
     )
+
+    verify_imports(c, config)
 
     # Install Playwright browsers if apigateway_scraper is installed
     logger.info("Checking if apigateway_scraper is installed...")
@@ -402,7 +540,6 @@ def collect_static(
         pty=True
     )
 
-# ruff: noqa: PLR0912
 def restart_services(
         c: Connection | DockerRunner | Context,
         config: dict
