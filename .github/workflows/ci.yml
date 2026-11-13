@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main  # Ejecuta las validaciones al hacer push en la rama 'main'
+      - no-sudo-deploy
 
 jobs:
   check:
