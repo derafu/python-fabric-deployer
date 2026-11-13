@@ -31,7 +31,7 @@ Derafu Deployer is a lightweight deployment system for managing multiple Django 
 
 ## Requirements
 
-- Python 3.13+
+- Python 3.14+
 - Fabric2 3.2
 - SSH access to your servers.
 - Docker (if using Docker runner)
@@ -42,7 +42,14 @@ Derafu Deployer is a lightweight deployment system for managing multiple Django 
 ## Installation
 
 ```bash
-pip install -r requirements.txt
+pip install .
+```
+
+For development (creates `venv/` with the lint and type checking tools):
+
+```bash
+make install-dev
+make check   # ruff + mypy + pyright
 ```
 
 **Note:** The tool is designed to be used standalone, not inside other project.
@@ -56,8 +63,8 @@ pip install -r requirements.txt
 ├── LICENSE                       # License file
 ├── README.md                     # Project documentation
 ├── fabfile.py                    # Entry point for Fabric tasks (e.g., deploy, rollback)
-├── pyproject.toml                # Optional project metadata and build configuration
-├── requirements.txt              # Python dependencies (e.g., fabric2, invoke)
+├── Makefile                      # Development tasks (install-dev, lint, typecheck, check)
+├── pyproject.toml                # Project metadata, dependencies and tool configuration
 ├── siteadd.py                    # Script to add new site entries to `sites.yml`
 ├── sites-dist.yml                # Example configuration file (template)
 ├── sites.yml                     # Main configuration file with all project deployments
@@ -126,12 +133,15 @@ For simple configurations you can use:
 | `venv`           | No       | `.venv`         | Virtualenv directory name                                  |
 | `runner`         | No       | `local`         | Can be `local`, `docker`, or `ssh`                         |
 | `docker_container` | Cond. | —               | Required if runner is `docker`                             |
-| `docker_user`    | No       | —               | User to run Docker commands as                             |
+| `docker_user`    | No       | `admin`         | User to run Docker commands as (avoid `root`: it leaves root-owned files that later deploys can't touch) |
+| `sites_root`     | No       | `/var/www/sites` | `deploy_path` and `backup_path` must be inside it (symlinks resolved on the target), or the deploy is aborted |
 | `backup_path`    | Yes      | —               | Where to store backups (must be defined)                   |
 | `max_backups`    | No       | `5`             | How many backups to keep                                   |
 | `shared_files`   | No       | `[]`            | List of files to symlink after each deploy                 |
 | `shared_dirs`    | No       | `[]`            | List of directories to symlink after each deploy           |
 | `writable_dirs`  | No       | `[]`            | Directories to make writable (chmod 775, etc.)             |
+| `writable_chmod_mode` | No  | `775`           | Mode applied to `writable_dirs`                            |
+| `writable_recursive` | No   | `false`         | Apply the mode recursively                                 |
 | `python_bin`     | No       | `python3`       | Interpreter used to create the virtualenv                   |
 | `system_site_packages` | No | `false`      | Create the virtualenv with `--system-site-packages`         |
 | `verify_imports` | No       | `[]`            | Modules that must import after installing dependencies      |
@@ -301,10 +311,14 @@ fab2 unlock-all
 
 ## Deployment Process
 
+The deployer never uses `sudo`: every command runs as the deploying user,
+who must own `deploy_path` (or be able to create it inside `sites_root`).
+The option `writable_use_sudo` was removed and is ignored if present.
+
 For each site, the deployment process performs the following steps:
 
-1. **Acquire Lock**: Prevents concurrent deployments by creating a `.deploy.lock` file. If the site is already locked, the deploy is aborted.
-2. **Check Remote**: Verifies SSH connection and deployment path.
+1. **Check Config and Paths**: Validates the required keys and that `deploy_path` and `backup_path` are inside `sites_root`.
+2. **Acquire Lock**: Prevents concurrent deployments by atomically creating a `.deploy.lock` file. If the site is already locked, the deploy is aborted.
 3. **Create Backup**: Compresses current state before deploying.
 4. **Update Code**: Clones Git repository into a temporary folder.
 5. **Versioned Release Folder**: Moves code into `releases/YYYYMMDD_HHMMSS_mmm/` and updates the `current` symlink.

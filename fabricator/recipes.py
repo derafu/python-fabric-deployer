@@ -9,6 +9,8 @@ checking remote systems, updating code, creating backups, and more.
 """
 import getpass
 import os
+import posixpath
+import shlex
 import uuid
 from datetime import UTC, datetime
 
@@ -18,6 +20,143 @@ from invoke.context import Context
 from fabricator.exceptions.deployer_exceptions import DeployerException
 from fabricator.logger import get_logger
 from fabricator.runners import DockerRunner
+
+# Default base directory that every deploy_path and backup_path must live in.
+DEFAULT_SITES_ROOT = "/var/www/sites"
+
+
+def _run_sh(
+        c: Connection | DockerRunner | Context,
+        script: str,
+        *args: str,
+        **kwargs
+    ):
+    """
+    Run a shell script on the target, passing values as positional args.
+
+    With the Docker runner, a plain command goes through the host shell
+    before ``docker exec``, so globs (``*``), pipes or redirections would
+    be evaluated on the host instead of inside the container. Wrapping the
+    script in ``sh -c`` makes the target's shell evaluate it, and passing
+    the values as ``$1``, ``$2``... avoids any quoting issues.
+
+    :param c: Fabric runner or connection object.
+    :type c: Union[Connection, DockerRunner, Context]
+
+    :param script: POSIX shell script; refer to the values as "$1", "$2"...
+    :type script: str
+
+    :param args: Values for the script's positional parameters.
+    :type args: str
+
+    :param kwargs: Extra options for the runner (hide, warn, ...).
+    :type kwargs: dict
+
+    :return: Result object from the runner.
+    :rtype: Result or None
+    """
+    quoted_args = " ".join(shlex.quote(arg) for arg in args)
+    return c.run(f"sh -c {shlex.quote(script)} sh {quoted_args}", **kwargs)
+
+
+def _normalize_path(path: str, key: str) -> str:
+    """
+    Normalize an absolute POSIX path from the config.
+
+    :param path: Path as written in ``sites.yml``.
+    :type path: str
+
+    :param key: Config key the path comes from (used in error messages).
+    :type key: str
+
+    :raises DeployerException: If the path is not absolute.
+    :return: Path with ``.``, ``..`` and duplicated slashes removed.
+    :rtype: str
+    """
+    if not posixpath.isabs(path):
+        raise DeployerException(f"'{key}' must be an absolute path: {path}")
+    normalized = posixpath.normpath(path)
+    # normpath keeps a leading "//" (POSIX allows it); treat it as "/".
+    if normalized.startswith("//"):
+        normalized = "/" + normalized.lstrip("/")
+    return normalized
+
+
+def _resolve_remote_path(
+        c: Connection | DockerRunner | Context,
+        path: str
+    ) -> str:
+    """
+    Resolve symlinks of a path on the target, even if it doesn't exist yet.
+
+    Walks up to the deepest existing directory, resolves it with
+    ``pwd -P`` and appends the missing components back, so a symlink
+    anywhere in the existing part of the path is taken into account.
+
+    :param c: Fabric runner or connection object.
+    :type c: Union[Connection, DockerRunner, Context]
+
+    :param path: Normalized absolute path.
+    :type path: str
+
+    :raises DeployerException: If the path cannot be resolved.
+    :return: Physical path on the target.
+    :rtype: str
+    """
+    script = (
+        'p="$1"; rest=""; '
+        'while [ ! -d "$p" ] && [ "$p" != "/" ]; do '
+        'rest="/$(basename "$p")$rest"; p="$(dirname "$p")"; '
+        'done; '
+        'printf "%s%s\\n" "$(cd "$p" && pwd -P)" "$rest"'
+    )
+    result = _run_sh(c, script, path, hide=True, warn=True)
+    if not result or result.failed or not result.stdout.strip():
+        raise DeployerException(f"Could not resolve path on target: {path}")
+    return _normalize_path(result.stdout.strip(), path)
+
+
+def validate_paths(
+        c: Connection | DockerRunner | Context,
+        config: dict
+    ) -> None:
+    """
+    Ensure the deploy and backup paths live inside the sites root.
+
+    Every command of a deploy (including ``rm -rf`` on old files) runs
+    inside ``deploy_path`` and ``backup_path``, so both must be strictly
+    inside ``sites_root`` (default ``/var/www/sites``) once symlinks are
+    resolved on the target. Otherwise the deploy is aborted before
+    touching anything.
+
+    :param c: Fabric runner or connection object.
+    :type c: Union[Connection, DockerRunner, Context]
+
+    :param config: Site configuration dictionary.
+    :type config: dict
+
+    :raises DeployerException: If a path is outside the sites root.
+    """
+    logger = get_logger(config['name'])
+
+    root = _normalize_path(
+        config.get("sites_root", DEFAULT_SITES_ROOT), "sites_root"
+    )
+    real_root = _resolve_remote_path(c, root)
+    prefix = real_root.rstrip("/") + "/"
+
+    for key in ("deploy_path", "backup_path"):
+        value = config.get(key)
+        if not value:
+            continue
+        real_path = _resolve_remote_path(c, _normalize_path(value, key))
+        if not real_path.startswith(prefix):
+            msg = (
+                f"'{key}' ({value} -> {real_path}) is outside of "
+                f"sites_root ({real_root}). Aborting."
+            )
+            logger.error(msg)
+            raise DeployerException(msg)
 
 
 def check_remote(c: Connection | DockerRunner | Context, config: dict) -> None:
@@ -100,12 +239,8 @@ def update_code(c: Connection | DockerRunner | Context, config: dict) -> None:
     logger.info("Removing any previous temporary clone...")
     c.run(f"rm -rf {tmp_clone}", warn=True)
 
-    # Create the temporary directory with sudo and assign permissions
-    remote_user = c.run("whoami", hide=True)
-    if remote_user:
-        remote_user = remote_user.stdout.strip()
-        c.sudo(f"mkdir -p {tmp_clone}")
-        c.sudo(f"chown {remote_user}:{remote_user} {tmp_clone}")
+    # Create the temporary directory (owned by the deploying user)
+    c.run(f"mkdir -p {tmp_clone}")
 
     # Perform the actual git clone into the temporary directory
     c.run(f"git clone --branch {branch} {repo} {tmp_clone}")
@@ -147,11 +282,7 @@ def shared_files(
     release_dir = config['deploy_path']
 
     # Ensure the shared directory exists
-    remote_user = c.run("whoami", hide=True)
-    if remote_user:
-        remote_user = remote_user.stdout.strip()
-        c.sudo(f"mkdir -p {shared_dir}")
-        c.sudo(f"chown {remote_user}:{remote_user} {shared_dir}")
+    c.run(f"mkdir -p {shared_dir}")
 
     # Handle shared files
     for file in shared_files:
@@ -192,11 +323,7 @@ def shared_files(
         # If the shared directory doesn't exist, create it
         result = c.run(f"test -d {shared_subdir}", warn=True)
         if result and result.failed:
-            remote_user = c.run("whoami", hide=True)
-            if remote_user:
-                remote_user = remote_user.stdout.strip()
-                c.sudo(f"mkdir -p {shared_subdir}", warn=True)
-                c.sudo(f"chown {remote_user}:{remote_user} {shared_subdir}")
+            c.run(f"mkdir -p {shared_subdir}", warn=True)
 
         # Create or update the symlink in the release directory
         c.run(f"ln -sfn {shared_subdir} {release_subdir}", warn=True)
@@ -617,7 +744,8 @@ def set_writable_dirs(
     """
     Set permissions on writable directories as defined in the config.
 
-    Supports options for recursion, use of `sudo`, and custom chmod modes.
+    Supports options for recursion and custom chmod modes. Commands run
+    as the deploying user, never with `sudo`.
 
     :param c: Fabric runner or connection object.
     :type c: Union[Connection, DockerRunner, Context]
@@ -634,9 +762,16 @@ def set_writable_dirs(
 
     # Load optional configuration flags
     recursive = config.get("writable_recursive", False)
-    use_sudo = config.get("writable_use_sudo", False)
     chmod_mode = config.get("writable_chmod_mode", "775")
     deploy_path = config["deploy_path"]
+
+    # writable_use_sudo was removed: chmod as root follows symlinks that
+    # the repository may contain, so it could change files outside the
+    # site. Everything under deploy_path belongs to the deploying user.
+    if config.get("writable_use_sudo"):
+        logger.warning(
+            "'writable_use_sudo' is no longer supported and is ignored."
+        )
 
     # Loop through each defined directory
     for directory in writable_dirs:
@@ -647,11 +782,7 @@ def set_writable_dirs(
 
         logger.info(f"Setting writable permissions on: {directory}")
 
-        # Use sudo or regular run based on config
-        if use_sudo:
-            c.sudo(chmod_cmd, warn=True)
-        else:
-            c.run(chmod_cmd, warn=True)
+        c.run(chmod_cmd, warn=True)
 
 def create_backup(
         c: Connection | DockerRunner | Context,
@@ -721,11 +852,7 @@ def create_backup(
     )
 
     # Ensure backup directory exists
-    remote_user = c.run("whoami", hide=True)
-    if remote_user:
-        remote_user = remote_user.stdout.strip()
-        c.sudo(f"mkdir -p {backup_path}")
-        c.sudo(f"chown {remote_user}:{remote_user} {backup_path}")
+    c.run(f"mkdir -p {backup_path}")
 
     # Create compressed backup using tar
     try:
@@ -756,13 +883,13 @@ def create_backup(
 
     # Delete older backups if exceeding max_backups
     try:
-        result = c.run(
-            f"ls -1t {backup_path}/{site_name}_*.tar.gz",
+        result = _run_sh(
+            c, 'ls -1t -- "$1"/"$2"_*.tar.gz', backup_path, site_name,
             hide=True, warn=True
         )
 
         # Initialize files as an empty list by default
-        files = []
+        files: list[str] = []
 
         # Only assign to files if there are results
         if result and result.stdout:
@@ -808,11 +935,7 @@ def deploy_to_release_folder(
     tmp_path = os.path.join(deploy_path, "__clone_tmp__")
 
     # Ensure releases folder exists
-    remote_user = c.run("whoami", hide=True)
-    if remote_user:
-        remote_user = remote_user.stdout.strip()
-        c.sudo(f"mkdir -p {releases_path}", warn=True)
-        c.sudo(f"chown {remote_user}:{remote_user} {releases_path}")
+    c.run(f"mkdir -p {releases_path}", warn=True)
 
     # Abort if the release folder already exists
     result = c.run(f"test -e {release_path}", warn=True, hide=True)
@@ -821,13 +944,17 @@ def deploy_to_release_folder(
         return ""
 
     # Move __clone_tmp__ into the final release folder
-    c.sudo(f"mv {tmp_path} {release_path}", warn=True)
+    result = c.run(f"mv {tmp_path} {release_path}", warn=True)
+    if not result or result.failed:
+        msg = f"Could not move {tmp_path} to {release_path}"
+        logger.error(msg)
+        raise DeployerException(msg)
 
     # Link the env file only if not managed by shared_files
     if "env" not in config.get("shared_files", []):
         env_source = os.path.join(deploy_path, "env")
         env_target = os.path.join(release_path, "env")
-        c.sudo(f"ln -sf {env_source} {env_target}", warn=True)
+        c.run(f"ln -sf {env_source} {env_target}", warn=True)
         logger.info(f"env linked: {env_target} -> {env_source}")
 
     # Log release creation details
@@ -886,7 +1013,9 @@ def cleanup_old_releases(
     releases_path = project_root
 
     # List all releases sorted by most recent
-    result = c.run(f"ls -1dt {releases_path}/*", hide=True, warn=True)
+    result = _run_sh(
+        c, 'ls -1dt -- "$1"/*', releases_path, hide=True, warn=True
+    )
 
     if not result or not result.stdout:
         logger.warning("No releases found. Skipping cleanup.")
@@ -932,7 +1061,9 @@ def rollback_to_previous_release(
     current_symlink = os.path.join(base_path, "current")
 
     # List all available releases
-    result = c.run(f"ls -1dt {releases_path}/*", warn=True, hide=True)
+    result = _run_sh(
+        c, 'ls -1dt -- "$1"/*', releases_path, warn=True, hide=True
+    )
 
     if not result or result.failed or not result.stdout.strip():
         logger.error("No releases found.")
@@ -984,14 +1115,17 @@ def acquire_lock(
     logger.info("Ensured deployment path exists.")
     result = c.run(f"test -d {deploy_path}", warn=True, hide=True)
     if not result or not result.ok:
-        # Create the temporary directory with sudo and assign permissions
+        # Create the deploy directory as the deploying user (no sudo)
         logger.info(f"Creating deploy directory: {deploy_path}")
-        remote_user = c.run("whoami", hide=True)
-        if remote_user:
-            remote_user = remote_user.stdout.strip()
-            c.sudo(f"mkdir -p {deploy_path}")
-            c.sudo(f"chmod 775 {deploy_path}")
-            c.sudo(f"chown {remote_user}:{remote_user} {deploy_path}")
+        result = c.run(f"mkdir -p {deploy_path}", warn=True)
+        if not result or result.failed:
+            msg = (
+                f"Could not create {deploy_path}. Create it beforehand "
+                f"and make the deploying user its owner."
+            )
+            logger.error(msg)
+            raise DeployerException(msg)
+        c.run(f"chmod 775 {deploy_path}", warn=True)
 
     # Path to the lock file
     lock_file = os.path.join(deploy_path, ".deploy.lock")
@@ -1003,15 +1137,6 @@ def acquire_lock(
     # Detect system user (who initiated the deployment)
     user = getpass.getuser()
 
-    # If lock already exists, abort
-    result = c.run(f"test -f {lock_file}", warn=True, hide=True)
-    if result and result.ok:
-        msg = "Deployment is already locked. Another deploy in progress."
-        logger.error(msg)
-        msg = "Deploy locked. Use `fab2 unlock --site=...`"
-        msg += "to force unlock if needed."
-        raise DeployerException(msg)
-
     # Compose informative lock file content
     content = (
         f"Locked at: {datetime.now(UTC).isoformat()}\n"
@@ -1020,13 +1145,27 @@ def acquire_lock(
         f"Lock ID: {lock_id}\n"
     )
 
-    # Create the lock file explicitly and then write to it
-    c.sudo(f"touch {lock_file}")
-    # Set appropriate permissions 664 allows group read/write
-    c.sudo(f"chmod 664 {lock_file}")
+    # Create and write the lock file in a single atomic step: with
+    # noclobber (set -C) the redirection fails if the file already exists,
+    # so two simultaneous deploys can't both acquire the lock.
+    result = _run_sh(
+        c, 'set -C; printf "%s" "$1" > "$2"', content, lock_file,
+        warn=True, hide=True
+    )
+    if not result or result.failed:
+        exists = c.run(f"test -f {lock_file}", warn=True, hide=True)
+        if exists and exists.ok:
+            msg = "Deployment is already locked. Another deploy in progress."
+            logger.error(msg)
+            msg = "Deploy locked. Use `fab2 unlock --site=...` "
+            msg += "to force unlock if needed."
+            raise DeployerException(msg)
+        msg = f"Could not create lock file {lock_file}"
+        logger.error(msg)
+        raise DeployerException(msg)
 
-    # Write lock file to remote system
-    c.run(f"sudo bash -c \"echo '{content}' > {lock_file}\"")
+    # Set appropriate permissions 664 allows group read/write
+    c.run(f"chmod 664 {lock_file}", warn=True)
     logger.info("Deployment lock acquired.")
 
     return lock_id

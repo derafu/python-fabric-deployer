@@ -8,3 +8,8 @@ venv/
 env
 .vscode/
 CLAUDE.md
+*.egg-info/
+build/
+dist/
+.mypy_cache/
+.ruff_cache/

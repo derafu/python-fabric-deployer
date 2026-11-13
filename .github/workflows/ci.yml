@@ -3,15 +3,15 @@ name: CI
 on:
   push:
     branches:
-      - main  # Ejecuta pruebas al hacer push en la rama 'main'
+      - main  # Ejecuta las validaciones al hacer push en la rama 'main'
 
 jobs:
-  ruff:
+  check:
     runs-on: ubuntu-latest
 
     strategy:
       matrix:
-        python-version: ['3.13']  # Puedes cambiar las versiones según necesites
+        python-version: ['3.14']
 
     steps:
       - name: Check out repository code
@@ -20,15 +20,10 @@ jobs:
       - name: Setup Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python-version }}  # Configura la versión de Python desde la matriz
-
-      - name: Install Ruff
-        run: |
-          python -m pip install --upgrade pip
-          pip install ruff
-
-      - name: Run Ruff
-        run: ruff check .
+          python-version: ${{ matrix.python-version }}
 
       - name: Display Python version
         run: python --version
+
+      - name: Lint and type checking (ruff, mypy, pyright)
+        run: make check PYTHON=python

@@ -15,11 +15,13 @@ from invoke.collection import Collection
 from invoke.context import Context
 
 from fabricator.deploy import deploy_site
+from fabricator.exceptions.deployer_exceptions import DeployerException
 from fabricator.logger import get_logger
 from fabricator.recipes import (
     release_lock,
     restart_services,
     rollback_to_previous_release,
+    validate_paths,
 )
 from fabricator.runners import DockerRunner
 from fabricator.utils import load_sites, print_site_list
@@ -65,7 +67,9 @@ def get_connection(
     # 2. If Docker runner is configured
     if config and config.get("runner") == "docker":
         container = config["docker_container"]
-        docker_user = config.get("docker_user", "root")
+        # Default to the non-root site owner: running as root would leave
+        # root-owned files that later (sudo-less) deploys can't touch.
+        docker_user = config.get("docker_user", "admin")
         return DockerRunner(
             container_name=container,
             inner_runner=Context(),
@@ -191,8 +195,13 @@ def rollback(c: Connection | DockerRunner | Context, site: str) -> None:
 
     # Resolve connection using environment vars if present
     c = get_connection(c, config = config)
-    # Log and execute rollback
+    # Log and execute rollback (only on paths inside sites_root)
     logger.info(f"Rolling back site: {site}")
+    try:
+        validate_paths(c, config)
+    except DeployerException as e:
+        logger.error(f"Rollback aborted: {e}")
+        return
     rollback_to_previous_release(c, config)
 
 @task
@@ -216,6 +225,11 @@ def rollback_all(c: Connection | DockerRunner | Context) -> None:
         c = get_connection(c, config = config)
         logger = get_logger(site)
         logger.info(f"Rolling back site: {site}")
+        try:
+            validate_paths(c, config)
+        except DeployerException as e:
+            logger.error(f"Rollback aborted: {e}")
+            continue
         rollback_to_previous_release(c, config)
 
 @task(help={"site": "Name of the site to unlock"})

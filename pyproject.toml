@@ -1,3 +1,62 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "python_fabric_deployer"
+
+# Versions should comply with PEP440
+version = "1.0.0"
+
+description = "Multi-site Django deployment tool built on Fabric2 (local, SSH and Docker runners)."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{name = "Derafu"}]
+keywords = ["deploy", "fabric", "django"]
+
+# See https://pypi.org/classifiers/
+classifiers = [
+  "Development Status :: 5 - Production/Stable",
+  "Intended Audience :: Developers",
+  "Topic :: Software Development :: Build Tools",
+  "Programming Language :: Python :: 3",
+]
+
+# Run-time dependencies, installed with the package
+dependencies = [
+  "bcrypt==4.3.0",
+  "cffi==2.0.0",
+  "cryptography==46.0.3",
+  "decorator==5.2.1",
+  "Deprecated==1.2.18",
+  "fabric2==3.2.2",
+  "invoke==2.2.0",
+  "paramiko==3.5.1",
+  "pycparser==2.22",
+  "PyNaCl==1.5.0",
+  "pyyaml==6.0.3",
+  "wrapt==1.17.3",
+]
+
+[project.urls]
+Homepage = "https://github.com/derafu/python-fabric-deployer"
+
+[dependency-groups]
+
+# Development tools (lint and type checking), not installed with the package:
+# `pip install --group dev`
+dev = [
+  "mypy==2.4.0",
+  "pyright==1.1.414",
+  "ruff==0.16.3",
+  "types-PyYAML==6.0.12.20260408",
+]
+
+[tool.setuptools.packages.find]
+include = ["fabricator", "fabricator.*"]
+namespaces = false
+
 [tool.ruff]
 
 # Files to include in linting (Python source and stub files)
@@ -17,13 +76,13 @@ exclude = [
 line-length = 79
 
 # Target Python version (used for version-specific rules)
-target-version = "py313"
+target-version = "py314"
 
 # Respect `.gitignore` files (e.g., to skip __init__.py or ignored files)
 respect-gitignore = true
 
-# Automatically fix issues using `ruff check --fix`
-fix = true
+# Apply fixes only with `ruff check --fix` (avoid rewriting the tree on `ruff check .`)
+fix = false
 
 [tool.ruff.lint]
 
@@ -64,3 +123,42 @@ ignore = [
 
 # Maximum cyclomatic complexity allowed before a warning is raised
 max-complexity = 8
+
+[tool.mypy]
+
+# Target Python version
+python_version = "3.14"
+
+# Files and folders checked when running `mypy` without arguments
+files = ["fabricator", "fabfile.py", "siteadd.py"]
+
+# Folders to exclude from type checking
+exclude = ["build/", "dist/", "venv/"]
+
+# Third-party packages without a py.typed marker: check their types anyway
+[[tool.mypy.overrides]]
+module = ["fabric2.*"]
+follow_untyped_imports = true
+
+[tool.pyright]
+
+# Folders to exclude from type checking
+exclude = [
+  "**/node_modules",
+  "**/__pycache__",
+  "build",
+  "dist",
+  ".git",
+  "venv",
+  ".venv",
+]
+
+# Target Python version
+pythonVersion = "3.14"
+
+# Type checking mode
+typeCheckingMode = "basic"
+
+# Virtual environment with the dependencies: ./venv
+venvPath = "."
+venv = "venv"

@@ -27,6 +27,7 @@ from fabricator.recipes import (
     shared_files,
     symlink_release_to_current,
     update_code,
+    validate_paths,
 )
 from fabricator.runners import DockerRunner
 
@@ -43,8 +44,9 @@ def deploy_site(c: Connection | DockerRunner | Context, config: dict) -> None:
 
     Deployment steps include:
 
-    1. Acquiring a lock to prevent concurrent deployments.
-    2. Verifying and preparing the remote directory structure.
+    1. Validating the configuration and that `deploy_path` and
+       `backup_path` live inside `sites_root`.
+    2. Acquiring a lock to prevent concurrent deployments.
     3. Creating a compressed backup of the current version.
     4. Cloning the repository into a new timestamped release folder.
     5. Cleaning up old releases beyond `max_releases`.
@@ -81,11 +83,13 @@ def deploy_site(c: Connection | DockerRunner | Context, config: dict) -> None:
     release_path = None
     original_path = None
     try:
-        # Step 0: Acquire lock to prevent concurrent deployments
-        lock_id = acquire_lock(c, config)
-
-        # Step 1: Ensure the remote deployment directory exists
+        # Step 0: Validate the config and that every path stays inside
+        # sites_root, before creating or touching anything
         check_remote(c, config)
+        validate_paths(c, config)
+
+        # Step 1: Acquire lock to prevent concurrent deployments
+        lock_id = acquire_lock(c, config)
 
         # Step 2: Create a compressed backup of the current state
         create_backup(c, config)

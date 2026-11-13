@@ -177,8 +177,7 @@ app.writeable.cl:
     - media
     - logs
   writable_chmod_mode: 775           # Optional, default is 775
-  writable_recursive: true           # Optional, default is true
-  writable_use_sudo: false           # Optional, default is false
+  writable_recursive: true           # Optional, default is false
 
 # ============================================
 # SECTION: Automatic Backup Support
